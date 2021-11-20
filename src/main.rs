@@ -47,10 +47,7 @@ fn main() -> Result<()> {
                 })
                 .collect::<Result<Vec<_>>>()?;
 
-            println!("Your code goes here!");
-
-            // Uncomment this block to pass the first stage
-            // println!("number of tables: {}", schemas.len());
+            println!("number of tables: {}", schemas.len());
         }
         _ => bail!("Missing or invalid command passed: {}", command),
     }
