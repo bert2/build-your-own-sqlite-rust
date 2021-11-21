@@ -1,4 +1,4 @@
-use anyhow::{anyhow, bail, Result};
+use anyhow::{bail, Result};
 use sqlite_starter_rust::{
     header::PageHeader, record::parse_record, schema::Schema, varint::parse_varint,
 };
@@ -9,13 +9,9 @@ use std::io::prelude::*;
 fn main() -> Result<()> {
     // Parse arguments
     let args = std::env::args().collect::<Vec<_>>();
-    match args.len() {
-        0 | 1 => bail!("Missing <database path> and <command>"),
-        2 => bail!("Missing <command>"),
-        _ => {}
-    }
+    validate(&args)?;
 
-    // Read database file into database
+    // Read database file
     let mut file = File::open(&args[1])?;
     let mut database = Vec::new();
     file.read_to_end(&mut database)?;
@@ -24,11 +20,36 @@ fn main() -> Result<()> {
     let command = &args[2];
     match command.as_str() {
         ".dbinfo" => dbinfo(&mut database),
-        _ => Err(anyhow!("Missing or invalid command passed: {}", command)),
+        ".tables" => tables(&mut database),
+        _ => bail!("Invalid command: {}", command),
+    }
+}
+
+fn validate(args: &Vec<String>) -> Result<()> {
+    match args.len() {
+        0 | 1 => bail!("Missing <database path> and <command>"),
+        2 => bail!("Missing <command>"),
+        _ => Ok(()),
     }
 }
 
 fn dbinfo(database: &mut Vec<u8>) -> Result<()> {
+    let schema = parse_db_schema(database)?;
+    println!("number of tables: {}", schema.len());
+    Ok(())
+}
+
+fn tables(database: &mut Vec<u8>) -> Result<()> {
+    let tables = parse_db_schema(database)?
+        .into_iter()
+        .map(|schema| schema.name)
+        .collect::<Vec<_>>()
+        .join(" ");
+    println!("{}", tables);
+    Ok(())
+}
+
+fn parse_db_schema(database: &mut Vec<u8>) -> Result<Vec<Schema>> {
     // Parse page header from database
     let page_header = PageHeader::parse(&database[100..108])?;
 
@@ -40,8 +61,7 @@ fn dbinfo(database: &mut Vec<u8>) -> Result<()> {
         .collect::<Vec<_>>();
 
     // Obtain all records from column 5
-    #[allow(unused_variables)]
-    let schemas = cell_pointers
+    cell_pointers
         .into_iter()
         .map(|cell_pointer| {
             let stream = &database[cell_pointer as usize..];
@@ -50,9 +70,5 @@ fn dbinfo(database: &mut Vec<u8>) -> Result<()> {
             parse_record(&stream[offset + read_bytes..], 5)
                 .map(|record| Schema::parse(record).expect("Invalid record"))
         })
-        .collect::<Result<Vec<_>>>()?;
-
-    println!("number of tables: {}", schemas.len());
-
-    Ok(())
+        .collect::<Result<Vec<_>>>()
 }
