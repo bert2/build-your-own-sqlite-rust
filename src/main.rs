@@ -1,4 +1,4 @@
-use anyhow::{bail, Result};
+use anyhow::{anyhow, bail, Result};
 use sqlite_starter_rust::{
     header::PageHeader, record::parse_record, schema::Schema, varint::parse_varint,
 };
@@ -23,34 +23,36 @@ fn main() -> Result<()> {
     // Parse command and act accordingly
     let command = &args[2];
     match command.as_str() {
-        ".dbinfo" => {
-            // Parse page header from database
-            let page_header = PageHeader::parse(&database[100..108])?;
-
-            // Obtain all cell pointers
-            let cell_pointers = database[108..]
-                .chunks_exact(2)
-                .take(page_header.number_of_cells.into())
-                .map(|bytes| u16::from_be_bytes(bytes.try_into().unwrap()))
-                .collect::<Vec<_>>();
-
-            // Obtain all records from column 5
-            #[allow(unused_variables)]
-            let schemas = cell_pointers
-                .into_iter()
-                .map(|cell_pointer| {
-                    let stream = &database[cell_pointer as usize..];
-                    let (_, offset) = parse_varint(stream);
-                    let (_rowid, read_bytes) = parse_varint(&stream[offset..]);
-                    parse_record(&stream[offset + read_bytes..], 5)
-                        .map(|record| Schema::parse(record).expect("Invalid record"))
-                })
-                .collect::<Result<Vec<_>>>()?;
-
-            println!("number of tables: {}", schemas.len());
-        }
-        _ => bail!("Missing or invalid command passed: {}", command),
+        ".dbinfo" => dbinfo(&mut database),
+        _ => Err(anyhow!("Missing or invalid command passed: {}", command)),
     }
+}
+
+fn dbinfo(database: &mut Vec<u8>) -> Result<()> {
+    // Parse page header from database
+    let page_header = PageHeader::parse(&database[100..108])?;
+
+    // Obtain all cell pointers
+    let cell_pointers = database[108..]
+        .chunks_exact(2)
+        .take(page_header.number_of_cells.into())
+        .map(|bytes| u16::from_be_bytes(bytes.try_into().unwrap()))
+        .collect::<Vec<_>>();
+
+    // Obtain all records from column 5
+    #[allow(unused_variables)]
+    let schemas = cell_pointers
+        .into_iter()
+        .map(|cell_pointer| {
+            let stream = &database[cell_pointer as usize..];
+            let (_, offset) = parse_varint(stream);
+            let (_rowid, read_bytes) = parse_varint(&stream[offset..]);
+            parse_record(&stream[offset + read_bytes..], 5)
+                .map(|record| Schema::parse(record).expect("Invalid record"))
+        })
+        .collect::<Result<Vec<_>>>()?;
+
+    println!("number of tables: {}", schemas.len());
 
     Ok(())
 }
