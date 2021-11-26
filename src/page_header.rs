@@ -32,13 +32,12 @@ impl PageHeader {
         let number_of_cells = u16::from_be_bytes(stream[3..5].try_into()?);
         let start_of_content_area = u16::from_be_bytes(stream[5..7].try_into()?);
         let fragmented_free_bytes = stream[7];
-        let header = PageHeader {
+        Ok(PageHeader {
             page_type,
             first_free_block_start,
             number_of_cells,
             start_of_content_area,
             fragmented_free_bytes,
-        };
-        Ok(header)
+        })
     }
 }
