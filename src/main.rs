@@ -81,14 +81,13 @@ fn count_rows(tbl: &str, db: &mut Vec<u8>) -> Result<()> {
         .find(|x| x.type_ == "table" && x.name == tbl)
         .ok_or(anyhow!("Table '{}' not found", tbl))?;
     let page_offset = ((tbl_schema.rootpage - 1) as usize) * (page_size as usize);
-    let page_header = PageHeader::parse(&db[page_offset..page_offset + 8])?;
+    let page_header = PageHeader::parse(&db[page_offset..page_offset + 12])?;
     println!("{}", page_header.number_of_cells);
     Ok(())
 }
 
 fn parse_db_schema(db: &mut Vec<u8>) -> Result<Vec<Schema>> {
-    // Parse page header from database
-    let page_header = PageHeader::parse(&db[100..108])?;
+    let page_header = PageHeader::parse(&db[100..112])?;
 
     // Obtain all cell pointers
     let cell_pointers = db[108..]
