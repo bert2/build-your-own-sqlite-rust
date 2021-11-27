@@ -4,8 +4,7 @@ use anyhow::{bail, Result};
 /// Reads SQLite's "Record Format" as mentioned here:
 /// [record_format](https://www.sqlite.org/fileformat.html#record_format)
 pub fn parse_record(stream: &[u8], column_count: usize) -> Result<Vec<Vec<u8>>> {
-    // Parse number of bytes in header, and use bytes_read as offset
-    let (_, mut offset) = parse_varint(stream);
+    let mut offset = parse_varint(stream).1; // header size
 
     // Read each varint into serial types and modify the offset
     let mut serial_types = vec![];

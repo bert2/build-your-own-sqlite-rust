@@ -5,7 +5,7 @@ const LAST_SEVEN_BITS_MASK: u8 = 0b01111111;
 /// [varint](https://www.sqlite.org/fileformat2.html#varint)
 ///
 /// Returns (varint, bytes_read)
-pub fn parse_varint(stream: &[u8]) -> (usize, usize) {
+pub fn parse_varint(stream: &[u8]) -> (i64, usize) {
     let usable_bytes = read_usable_bytes(stream);
     let bytes_read = usable_bytes.len();
     let varint = usable_bytes
@@ -13,7 +13,7 @@ pub fn parse_varint(stream: &[u8]) -> (usize, usize) {
         .enumerate()
         .fold(0, |value, (i, usable_byte)| {
             let usable_size = if i == 8 { 8 } else { 7 };
-            (value << usable_size) + usable_value(usable_size, usable_byte) as usize
+            (value << usable_size) + usable_value(usable_size, usable_byte) as i64
         });
     (varint, bytes_read)
 }

@@ -1,6 +1,6 @@
 use anyhow::{anyhow, bail, Result};
 use sqlite_starter_rust::{
-    db_header::DbHeader, page_header::PageHeader, record::parse_record, schema::Schema,
+    db_header::DbHeader, page_header::PageHeader, record::parse_record, schema, schema::Schema,
     varint::parse_varint,
 };
 use std::convert::TryInto;
@@ -10,8 +10,8 @@ use std::io::prelude::*;
 
 fn main() -> Result<()> {
     let args = validate(args().collect::<Vec<_>>())?;
-    let mut db = read_db(&args[1])?;
-    parse_and_run(&args[2], &mut db)
+    let db = read_db(&args[1])?;
+    parse_and_run(&args[2], &db)
 }
 
 fn validate(args: Vec<String>) -> Result<Vec<String>> {
@@ -29,7 +29,7 @@ fn read_db(file: &String) -> Result<Vec<u8>> {
     Ok(db)
 }
 
-fn parse_and_run(cmd: &String, db: &mut Vec<u8>) -> Result<()> {
+fn parse_and_run(cmd: &String, db: &Vec<u8>) -> Result<()> {
     fn is_count_query(cmd: &String) -> bool {
         cmd.to_uppercase().starts_with("SELECT COUNT(*) FROM ")
     }
@@ -46,7 +46,7 @@ fn parse_and_run(cmd: &String, db: &mut Vec<u8>) -> Result<()> {
     }
 }
 
-fn dbinfo(db: &mut Vec<u8>) -> Result<()> {
+fn dbinfo(db: &Vec<u8>) -> Result<()> {
     let db_header = DbHeader::parse(&db[..100])?;
     println!("{:#?}", db_header);
     let schema = parse_db_schema(db)?;
@@ -54,7 +54,7 @@ fn dbinfo(db: &mut Vec<u8>) -> Result<()> {
     Ok(())
 }
 
-fn tables(db: &mut Vec<u8>) -> Result<()> {
+fn tables(db: &Vec<u8>) -> Result<()> {
     let names = parse_db_schema(db)?
         .into_iter()
         .map(|schema| schema.name)
@@ -64,7 +64,7 @@ fn tables(db: &mut Vec<u8>) -> Result<()> {
     Ok(())
 }
 
-fn schema(db: &mut Vec<u8>) -> Result<()> {
+fn schema(db: &Vec<u8>) -> Result<()> {
     let sqls = parse_db_schema(db)?
         .into_iter()
         .map(|schema| schema.sql)
@@ -74,7 +74,7 @@ fn schema(db: &mut Vec<u8>) -> Result<()> {
     Ok(())
 }
 
-fn count_rows(tbl: &str, db: &mut Vec<u8>) -> Result<()> {
+fn count_rows(tbl: &str, db: &Vec<u8>) -> Result<()> {
     let page_size = DbHeader::parse(&db[..100])?.page_size;
     let tbl_schema = parse_db_schema(db)?
         .into_iter()
@@ -87,25 +87,24 @@ fn count_rows(tbl: &str, db: &mut Vec<u8>) -> Result<()> {
     Ok(())
 }
 
-fn parse_db_schema(db: &mut Vec<u8>) -> Result<Vec<Schema>> {
+fn parse_db_schema(db: &Vec<u8>) -> Result<Vec<Schema>> {
     let page_header = PageHeader::parse(&db[100..112])?;
 
     // Obtain all cell pointers
-    let cell_pointers_offset = if page_header.is_leaf() { 108 } else { 112 };
-    let cell_pointers = db[cell_pointers_offset..]
+    let cell_pointers = db[100 + page_header.size()..]
         .chunks_exact(2)
         .take(page_header.number_of_cells.into())
         .map(|bytes| u16::from_be_bytes(bytes.try_into().unwrap()))
         .collect::<Vec<_>>();
 
-    // Obtain all records from column 5
+    // Obtain all schema records
     cell_pointers
         .into_iter()
         .map(|cell_pointer| {
-            let stream = &db[cell_pointer as usize..];
-            let (_, offset) = parse_varint(stream);
-            let (_rowid, read_bytes) = parse_varint(&stream[offset..]);
-            parse_record(&stream[offset + read_bytes..], 5)
+            let mut offset = cell_pointer as usize;
+            offset += parse_varint(&db[offset..]).1; // payload size
+            offset += parse_varint(&db[offset..]).1; // row id
+            parse_record(&db[offset..], schema::COLUMN_COUNT)
                 .map(|record| Schema::parse(record).expect("Invalid record"))
         })
         .collect::<Result<Vec<_>>>()

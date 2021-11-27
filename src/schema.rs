@@ -1,3 +1,5 @@
+pub const COLUMN_COUNT: usize = 5;
+
 #[derive(Debug)]
 pub struct Schema {
     pub type_: String,
@@ -8,7 +10,6 @@ pub struct Schema {
 }
 
 impl Schema {
-    /// Parses a record into a schema
     pub fn parse(record: Vec<Vec<u8>>) -> Option<Self> {
         let mut items = record.into_iter();
         let type_ = items.next()?;

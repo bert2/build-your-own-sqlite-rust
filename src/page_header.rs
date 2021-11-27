@@ -54,4 +54,12 @@ impl PageHeader {
             _ => false,
         }
     }
+
+    pub fn size(&self) -> usize {
+        if self.is_leaf() {
+            8
+        } else {
+            12
+        }
+    }
 }
