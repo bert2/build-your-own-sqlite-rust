@@ -47,4 +47,11 @@ impl PageHeader {
             right_most_pointer,
         })
     }
+
+    pub fn is_leaf(&self) -> bool {
+        match self.page_type {
+            BTreePage::LeafTable | BTreePage::LeafIndex => true,
+            _ => false,
+        }
+    }
 }

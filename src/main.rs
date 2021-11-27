@@ -82,6 +82,7 @@ fn count_rows(tbl: &str, db: &mut Vec<u8>) -> Result<()> {
         .ok_or(anyhow!("Table '{}' not found", tbl))?;
     let page_offset = ((tbl_schema.rootpage - 1) as usize) * (page_size as usize);
     let page_header = PageHeader::parse(&db[page_offset..page_offset + 12])?;
+    println!("{:#?}", page_header);
     println!("{}", page_header.number_of_cells);
     Ok(())
 }
@@ -90,7 +91,8 @@ fn parse_db_schema(db: &mut Vec<u8>) -> Result<Vec<Schema>> {
     let page_header = PageHeader::parse(&db[100..112])?;
 
     // Obtain all cell pointers
-    let cell_pointers = db[108..]
+    let cell_pointers_offset = if page_header.is_leaf() { 108 } else { 112 };
+    let cell_pointers = db[cell_pointers_offset..]
         .chunks_exact(2)
         .take(page_header.number_of_cells.into())
         .map(|bytes| u16::from_be_bytes(bytes.try_into().unwrap()))
