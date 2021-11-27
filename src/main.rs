@@ -37,6 +37,7 @@ fn parse_and_run(cmd: &String, db: &mut Vec<u8>) -> Result<()> {
     match cmd.as_str() {
         ".dbinfo" => dbinfo(db),
         ".tables" => tables(db),
+        ".schema" => schema(db),
         _ if is_count_query(cmd) => {
             let tbl = cmd.split(' ').last().unwrap();
             count_rows(tbl, db)
@@ -54,12 +55,22 @@ fn dbinfo(db: &mut Vec<u8>) -> Result<()> {
 }
 
 fn tables(db: &mut Vec<u8>) -> Result<()> {
-    let tbls = parse_db_schema(db)?
+    let names = parse_db_schema(db)?
         .into_iter()
         .map(|schema| schema.name)
         .collect::<Vec<_>>()
         .join(" ");
-    println!("{}", tbls);
+    println!("{}", names);
+    Ok(())
+}
+
+fn schema(db: &mut Vec<u8>) -> Result<()> {
+    let sqls = parse_db_schema(db)?
+        .into_iter()
+        .map(|schema| schema.sql)
+        .collect::<Vec<_>>()
+        .join("\n");
+    println!("{}", sqls);
     Ok(())
 }
 
