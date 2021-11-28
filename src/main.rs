@@ -37,7 +37,7 @@ fn parse_and_run(cmd: &str, db: &Vec<u8>) -> Result<()> {
         Ok(Sqlite::SqlStmt(SqlStmt::Select {
             col: Expr::Count,
             tbl,
-        })) => count_rows(&tbl, db),
+        })) => count_rows(tbl, db),
         Err(e) => bail!("Invalid query: {}", e),
         x => bail!("not implemented: {:#?}", x),
     }

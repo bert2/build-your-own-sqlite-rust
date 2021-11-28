@@ -7,9 +7,9 @@ use nom::{
 type R<'a, O> = IResult<&'a str, O, VerboseError<&'a str>>;
 
 #[derive(Debug, Clone)]
-pub enum Sqlite {
+pub enum Sqlite<'a> {
     DotCmd(DotCmd),
-    SqlStmt(SqlStmt),
+    SqlStmt(SqlStmt<'a>),
 }
 
 #[derive(Debug, Clone)]
@@ -20,20 +20,20 @@ pub enum DotCmd {
 }
 
 #[derive(Debug, Clone)]
-pub enum SqlStmt {
+pub enum SqlStmt<'a> {
     CreateTbl {
-        tbl_name: String,
-        col_names: Vec<String>,
+        tbl_name: &'a str,
+        col_names: Vec<&'a str>,
     },
     Select {
-        col: Expr,
-        tbl: String,
+        col: Expr<'a>,
+        tbl: &'a str,
     },
 }
 
 #[derive(Debug, Clone)]
-pub enum Expr {
-    ColName(String),
+pub enum Expr<'a> {
+    ColName(&'a str),
     Count,
 }
 
@@ -69,7 +69,7 @@ fn select_col(i: &str) -> R<Expr> {
     terminated(
         alt((
             value(Expr::Count, tag_no_case("COUNT(*)")),
-            alpha1.map(|name: &str| Expr::ColName(name.to_string())),
+            alpha1.map(Expr::ColName),
         )),
         multispace1,
     )(i)
@@ -83,10 +83,7 @@ fn select_tbl_name(i: &str) -> R<&str> {
 
 fn select_stmt(i: &str) -> R<Sqlite> {
     tuple((select_start, select_col, select_tbl_name))
-        .map(|x| SqlStmt::Select {
-            col: x.1,
-            tbl: x.2.to_string(),
-        })
+        .map(|x| SqlStmt::Select { col: x.1, tbl: x.2 })
         .map(Sqlite::SqlStmt)
         .parse(i)
 }
@@ -126,8 +123,8 @@ fn create_tbl_stmt(i: &str) -> R<Sqlite> {
         multispace0,
     ))
     .map(|x| SqlStmt::CreateTbl {
-        tbl_name: x.1.to_string(),
-        col_names: x.2.iter().map(|n| n.to_string()).collect(),
+        tbl_name: x.1,
+        col_names: x.2,
     })
     .map(Sqlite::SqlStmt)
     .parse(i)
