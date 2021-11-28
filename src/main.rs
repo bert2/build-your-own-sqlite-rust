@@ -29,17 +29,29 @@ fn read_db(file: &str) -> Result<Vec<u8>> {
     Ok(db)
 }
 
-fn parse_and_run(cmd: &str, db: &Vec<u8>) -> Result<()> {
-    match parse(cmd) {
-        Ok(Sqlite::DotCmd(DotCmd::DbInfo)) => dbinfo(db),
-        Ok(Sqlite::DotCmd(DotCmd::Tables)) => tables(db),
-        Ok(Sqlite::DotCmd(DotCmd::Schema)) => schema(db),
-        Ok(Sqlite::SqlStmt(SqlStmt::Select {
+fn parse_and_run(sql: &str, db: &Vec<u8>) -> Result<()> {
+    match parse_sql(sql) {
+        Ok(Sqlite::DotCmd(cmd)) => run_dot_cmd(cmd, db),
+        Ok(Sqlite::SqlStmt(stmt)) => run_sql_stmt(stmt, db),
+        Err(e) => bail!("Invalid SQL: {}", e),
+    }
+}
+
+fn run_dot_cmd(cmd: DotCmd, db: &Vec<u8>) -> Result<()> {
+    match cmd {
+        DotCmd::DbInfo => dbinfo(db),
+        DotCmd::Tables => tables(db),
+        DotCmd::Schema => schema(db),
+    }
+}
+
+fn run_sql_stmt(stmt: SqlStmt, db: &Vec<u8>) -> Result<()> {
+    match stmt {
+        SqlStmt::Select {
             col: Expr::Count,
             tbl,
-        })) => count_rows(tbl, db),
-        Err(e) => bail!("Invalid query: {}", e),
-        x => bail!("not implemented: {:#?}", x),
+        } => count_rows(tbl, db),
+        _ => bail!("not implemented: {:#?}", stmt),
     }
 }
 
