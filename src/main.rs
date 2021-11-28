@@ -1,7 +1,7 @@
 use anyhow::{anyhow, bail, Result};
 use sqlite_starter_rust::{
     db_header::DbHeader, page_header::PageHeader, record::parse_record, schema, schema::Schema,
-    varint::parse_varint,
+    sql::*, varint::parse_varint,
 };
 use std::convert::TryInto;
 use std::env::args;
@@ -22,27 +22,24 @@ fn validate(args: Vec<String>) -> Result<Vec<String>> {
     }
 }
 
-fn read_db(file: &String) -> Result<Vec<u8>> {
+fn read_db(file: &str) -> Result<Vec<u8>> {
     let mut file = File::open(file)?;
     let mut db = Vec::new();
     file.read_to_end(&mut db)?;
     Ok(db)
 }
 
-fn parse_and_run(cmd: &String, db: &Vec<u8>) -> Result<()> {
-    fn is_count_query(cmd: &String) -> bool {
-        cmd.to_uppercase().starts_with("SELECT COUNT(*) FROM ")
-    }
-
-    match cmd.as_str() {
-        ".dbinfo" => dbinfo(db),
-        ".tables" => tables(db),
-        ".schema" => schema(db),
-        _ if is_count_query(cmd) => {
-            let tbl = cmd.split(' ').last().unwrap();
-            count_rows(tbl, db)
-        }
-        _ => bail!("Invalid query: {}", cmd),
+fn parse_and_run(cmd: &str, db: &Vec<u8>) -> Result<()> {
+    match parse(cmd) {
+        Ok(Sqlite::DotCmd(DotCmd::DbInfo)) => dbinfo(db),
+        Ok(Sqlite::DotCmd(DotCmd::Tables)) => tables(db),
+        Ok(Sqlite::DotCmd(DotCmd::Schema)) => schema(db),
+        Ok(Sqlite::SqlStmt(SqlStmt::Select {
+            col: Expr::Count,
+            tbl,
+        })) => count_rows(&tbl, db),
+        Err(e) => bail!("Invalid query: {}", e),
+        x => bail!("not implemented: {:#?}", x),
     }
 }
 
@@ -82,7 +79,7 @@ fn count_rows(tbl: &str, db: &Vec<u8>) -> Result<()> {
         .ok_or(anyhow!("Table '{}' not found", tbl))?;
     let page_offset = ((tbl_schema.rootpage - 1) as usize) * (page_size as usize);
     let page_header = PageHeader::parse(&db[page_offset..page_offset + 12])?;
-    println!("{:#?}", page_header);
+    //println!("{:#?}", page_header);
     println!("{}", page_header.number_of_cells);
     Ok(())
 }
