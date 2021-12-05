@@ -13,7 +13,7 @@ pub fn parse_varint(stream: &[u8]) -> (i64, usize) {
         .enumerate()
         .fold(0, |value, (i, usable_byte)| {
             let usable_size = if i == 8 { 8 } else { 7 };
-            (value << usable_size) + usable_value(usable_size, usable_byte) as i64
+            (value << usable_size) + i64::from(usable_value(usable_size, usable_byte))
         });
     (varint, bytes_read)
 }

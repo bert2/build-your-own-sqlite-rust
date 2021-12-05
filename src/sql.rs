@@ -51,8 +51,7 @@ fn dot_cmd(i: &str) -> R<DotCmd> {
             value(DotCmd::Schema, tag("schema")),
         )),
         multispace0,
-    )
-    .parse(i)
+    )(i)
 }
 
 fn select_result_col(i: &str) -> R<Expr> {
@@ -96,16 +95,23 @@ fn create_tbl_stmt(i: &str) -> R<SqlStmt> {
     .parse(i)
 }
 
-fn sqlite(i: &str) -> R<Sqlite> {
-    alt((
-        dot_cmd.map(Sqlite::DotCmd),
-        select_stmt.map(Sqlite::SqlStmt),
-        create_tbl_stmt.map(Sqlite::SqlStmt),
-    ))(i)
+fn sql_stmt(i: &str) -> R<SqlStmt> {
+    alt((select_stmt, create_tbl_stmt))(i)
 }
 
-pub fn parse_sql(sql: &str) -> Result<Sqlite> {
+fn sqlite(i: &str) -> R<Sqlite> {
+    alt((dot_cmd.map(Sqlite::DotCmd), sql_stmt.map(Sqlite::SqlStmt)))(i)
+}
+
+pub fn parse_sqlite(sql: &str) -> Result<Sqlite> {
     sqlite(sql)
+        .finish()
+        .map(|r| r.1)
+        .map_err(|e| anyhow!(convert_error(sql, e)))
+}
+
+pub fn parse_sql_stmt(sql: &str) -> Result<SqlStmt> {
+    sql_stmt(sql)
         .finish()
         .map(|r| r.1)
         .map_err(|e| anyhow!(convert_error(sql, e)))

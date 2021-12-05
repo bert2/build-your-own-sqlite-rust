@@ -1,12 +1,11 @@
 use anyhow::{anyhow, bail, Result};
-use sqlite_starter_rust::{
-    db_header::DbHeader, page_header::PageHeader, record::parse_record, schema, schema::Schema,
-    sql::*, varint::parse_varint,
+use sqlite_starter_rust::{cell::*, db_header::*, page_header::*, schema::*, sql::*, str_sim::*};
+use std::{
+    convert::{From, TryFrom, TryInto},
+    env::args,
+    fs::File,
+    io::prelude::*,
 };
-use std::convert::TryInto;
-use std::env::args;
-use std::fs::File;
-use std::io::prelude::*;
 
 fn main() -> Result<()> {
     let args = validate(args().collect::<Vec<_>>())?;
@@ -30,7 +29,7 @@ fn read_db(file: &str) -> Result<Vec<u8>> {
 }
 
 fn parse_and_run(sql: &str, db: &Vec<u8>) -> Result<()> {
-    match parse_sql(sql) {
+    match parse_sqlite(sql) {
         Ok(Sqlite::DotCmd(cmd)) => run_dot_cmd(cmd, db),
         Ok(Sqlite::SqlStmt(stmt)) => run_sql_stmt(stmt, db),
         Err(e) => bail!("Invalid SQL: {}", e),
@@ -51,6 +50,10 @@ fn run_sql_stmt(stmt: SqlStmt, db: &Vec<u8>) -> Result<()> {
             col: Expr::Count,
             tbl,
         } => count_rows(tbl, db),
+        SqlStmt::Select {
+            col: Expr::ColName(col),
+            tbl,
+        } => select_col(col, tbl, db),
         _ => bail!("not implemented: {:#?}", stmt),
     }
 }
@@ -89,32 +92,62 @@ fn count_rows(tbl: &str, db: &Vec<u8>) -> Result<()> {
         .into_iter()
         .find(|x| x.type_ == "table" && x.name == tbl)
         .ok_or(anyhow!("Table '{}' not found", tbl))?;
-    let page_offset = ((tbl_schema.rootpage - 1) as usize) * (page_size as usize);
+    let page_offset = usize::try_from(tbl_schema.rootpage - 1)? * usize::from(page_size);
     let page_header = PageHeader::parse(&db[page_offset..page_offset + 12])?;
-    //println!("{:#?}", page_header);
     println!("{}", page_header.number_of_cells);
     Ok(())
 }
 
-fn parse_db_schema(db: &Vec<u8>) -> Result<Vec<Schema>> {
-    let page_header = PageHeader::parse(&db[100..112])?;
+fn select_col(col: &str, tbl: &str, db: &Vec<u8>) -> Result<()> {
+    let page_size: usize = DbHeader::parse(db)?.page_size.into();
 
-    // Obtain all cell pointers
-    let cell_pointers = db[100 + page_header.size()..]
+    let tbl_schema = parse_db_schema(db)?
+        .into_iter()
+        .find(|x| x.type_ == "table" && x.name == tbl)
+        .ok_or(anyhow!("Table '{}' not found", tbl))?;
+
+    let cols = match parse_sql_stmt(&tbl_schema.sql)? {
+        SqlStmt::CreateTbl { col_names, .. } => col_names,
+        _ => bail!(
+            "Expected CREATE TABLE statement but got:\n{}",
+            tbl_schema.sql
+        ),
+    };
+
+    let col_idx = cols.iter().position(|&c| c == col).ok_or(anyhow!(
+        "Unknown column '{}'. Did you mean '{}'?",
+        col,
+        most_similar(col, &cols).unwrap()
+    ))?;
+
+    let page_offset = usize::try_from(tbl_schema.rootpage - 1)? * page_size;
+
+    let page = &db[page_offset..page_offset + page_size];
+
+    let page_header = PageHeader::parse(&page)?;
+
+    let col_values = page[page_header.size()..]
         .chunks_exact(2)
         .take(page_header.number_of_cells.into())
-        .map(|bytes| u16::from_be_bytes(bytes.try_into().unwrap()))
-        .collect::<Vec<_>>();
-
-    // Obtain all schema records
-    cell_pointers
-        .into_iter()
+        .map(|bytes| usize::from(u16::from_be_bytes(bytes.try_into().unwrap())))
         .map(|cell_pointer| {
-            let mut offset = cell_pointer as usize;
-            offset += parse_varint(&db[offset..]).1; // payload size
-            offset += parse_varint(&db[offset..]).1; // row id
-            parse_record(&db[offset..], schema::COLUMN_COUNT)
-                .map(|record| Schema::parse(record).expect("Invalid record"))
+            Cell::parse(&page[cell_pointer..]).map(|cell| format!("{}", cell.payload[col_idx]))
         })
+        .collect::<Result<Vec<_>>>()?
+        .join("\n");
+
+    println!("{}", col_values);
+
+    Ok(())
+}
+
+fn parse_db_schema(db: &[u8]) -> Result<Vec<Schema>> {
+    let page_header = PageHeader::parse(&db[100..])?;
+
+    db[100 + page_header.size()..]
+        .chunks_exact(2)
+        .take(page_header.number_of_cells.into())
+        .map(|bytes| usize::from(u16::from_be_bytes(bytes.try_into().unwrap())))
+        .map(|cell_pointer| Cell::parse(&db[cell_pointer..]).and_then(Schema::parse))
         .collect::<Result<Vec<_>>>()
 }
