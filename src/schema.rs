@@ -1,6 +1,6 @@
 use crate::cell::*;
 use anyhow::*;
-use std::convert::TryFrom;
+use std::convert::*;
 
 #[derive(Debug)]
 pub struct Schema<'a> {
@@ -8,7 +8,7 @@ pub struct Schema<'a> {
     pub name: &'a str,
     pub tbl_name: &'a str,
     pub rootpage: i64,
-    pub sql: &'a str,
+    pub sql: Option<&'a str>,
 }
 
 impl<'a> Schema<'a> {
@@ -22,7 +22,7 @@ impl<'a> Schema<'a> {
                 .map_err(|e| anyhow!("Unexpected value in column 'tbl_name': {}", e))?,
             rootpage: i64::try_from(&record.payload[3])
                 .map_err(|e| anyhow!("Unexpected value in column 'rootpage': {}", e))?,
-            sql: <&str>::try_from(&record.payload[4])
+            sql: Option::<&str>::try_from(&record.payload[4])
                 .map_err(|e| anyhow!("Unexpected value in column 'sql': {}", e))?,
         })
     }

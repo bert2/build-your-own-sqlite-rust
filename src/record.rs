@@ -118,14 +118,6 @@ impl<'a> TryFrom<&ColContent<'a>> for i8 {
     }
 }
 
-impl<'a> TryFrom<ColContent<'a>> for i8 {
-    type Error = anyhow::Error;
-
-    fn try_from(value: ColContent) -> Result<Self, Self::Error> {
-        i8::try_from(&value)
-    }
-}
-
 impl<'a> TryFrom<&ColContent<'a>> for i16 {
     type Error = anyhow::Error;
 
@@ -135,14 +127,6 @@ impl<'a> TryFrom<&ColContent<'a>> for i16 {
             ColContent::Int16(&bytes) => i16::from_be_bytes(bytes),
             _ => bail!("ColContent cannot be converted to i16: {:?}", value),
         })
-    }
-}
-
-impl<'a> TryFrom<ColContent<'a>> for i16 {
-    type Error = anyhow::Error;
-
-    fn try_from(value: ColContent) -> Result<Self, Self::Error> {
-        i16::try_from(&value)
     }
 }
 
@@ -156,14 +140,6 @@ impl<'a> TryFrom<&ColContent<'a>> for i32 {
             ColContent::Int32(&bytes) => i32::from_be_bytes(bytes),
             _ => bail!("ColContent cannot be converted to i32: {:?}", value),
         })
-    }
-}
-
-impl<'a> TryFrom<ColContent<'a>> for i32 {
-    type Error = anyhow::Error;
-
-    fn try_from(value: ColContent) -> Result<Self, Self::Error> {
-        i32::try_from(&value)
     }
 }
 
@@ -183,14 +159,6 @@ impl<'a> TryFrom<&ColContent<'a>> for i64 {
     }
 }
 
-impl<'a> TryFrom<ColContent<'a>> for i64 {
-    type Error = anyhow::Error;
-
-    fn try_from(value: ColContent) -> Result<Self, Self::Error> {
-        i64::try_from(&value)
-    }
-}
-
 impl<'a> TryFrom<&ColContent<'a>> for f64 {
     type Error = anyhow::Error;
 
@@ -199,53 +167,6 @@ impl<'a> TryFrom<&ColContent<'a>> for f64 {
             ColContent::Float64(&bytes) => f64::from_be_bytes(bytes),
             _ => bail!("ColContent cannot be converted to f64: {:?}", value),
         })
-    }
-}
-
-impl<'a> TryFrom<ColContent<'a>> for f64 {
-    type Error = anyhow::Error;
-
-    fn try_from(value: ColContent) -> Result<Self, Self::Error> {
-        f64::try_from(&value)
-    }
-}
-
-impl<'a> TryFrom<&ColContent<'a>> for bool {
-    type Error = anyhow::Error;
-
-    fn try_from(value: &ColContent) -> Result<Self, Self::Error> {
-        Ok(match value {
-            ColContent::False => false,
-            ColContent::True => true,
-            _ => bail!("ColContent cannot be converted to bool: {:?}", value),
-        })
-    }
-}
-
-impl<'a> TryFrom<ColContent<'a>> for bool {
-    type Error = anyhow::Error;
-
-    fn try_from(value: ColContent) -> Result<Self, Self::Error> {
-        bool::try_from(&value)
-    }
-}
-
-impl<'a> TryFrom<&ColContent<'a>> for String {
-    type Error = anyhow::Error;
-
-    fn try_from(value: &ColContent) -> Result<Self, Self::Error> {
-        match value {
-            ColContent::Text(bytes) => Ok(String::from_utf8(bytes.to_vec())?),
-            _ => bail!("ColContent cannot be converted to String: {:?}", value),
-        }
-    }
-}
-
-impl<'a> TryFrom<ColContent<'a>> for String {
-    type Error = anyhow::Error;
-
-    fn try_from(value: ColContent) -> Result<Self, Self::Error> {
-        String::try_from(&value)
     }
 }
 
@@ -260,11 +181,14 @@ impl<'a> TryFrom<&ColContent<'a>> for &'a str {
     }
 }
 
-impl<'a> TryFrom<ColContent<'a>> for &'a str {
+impl<'a> TryFrom<&ColContent<'a>> for Option<&'a str> {
     type Error = anyhow::Error;
 
-    fn try_from(value: ColContent<'a>) -> Result<Self, Self::Error> {
-        <&str>::try_from(&value)
+    fn try_from(value: &ColContent<'a>) -> Result<Self, Self::Error> {
+        match value {
+            ColContent::Null => Ok(None),
+            _ => Ok(Some(<&str>::try_from(value)?)),
+        }
     }
 }
 

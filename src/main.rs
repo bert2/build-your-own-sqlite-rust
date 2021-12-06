@@ -1,6 +1,7 @@
 use anyhow::{anyhow, bail, Result};
 use sqlite_starter_rust::{cell::*, db_header::*, page_header::*, schema::*, sql::*, str_sim::*};
 use std::{
+    borrow::*,
     convert::{From, TryFrom, TryInto},
     env::args,
     fs::File,
@@ -77,12 +78,21 @@ fn tables(db: &Vec<u8>) -> Result<()> {
 }
 
 fn schema(db: &Vec<u8>) -> Result<()> {
+    fn get_sql(schema: Schema) -> Cow<str> {
+        schema
+            .sql
+            .map(Cow::from)
+            .unwrap_or_else(|| format!("[Object '{}' has no CREATE statement]", schema.name).into())
+    }
+
     let sqls = parse_db_schema(db)?
         .into_iter()
-        .map(|schema| schema.sql)
+        .map(get_sql)
         .collect::<Vec<_>>()
         .join("\n");
+
     println!("{}", sqls);
+
     Ok(())
 }
 
@@ -105,13 +115,12 @@ fn select_col(col: &str, tbl: &str, db: &Vec<u8>) -> Result<()> {
         .into_iter()
         .find(|x| x.type_ == "table" && x.name == tbl)
         .ok_or(anyhow!("Table '{}' not found", tbl))?;
-
-    let cols = match parse_sql_stmt(&tbl_schema.sql)? {
+    let tbl_sql = tbl_schema
+        .sql
+        .ok_or_else(|| anyhow!("No CREATE statment for object '{}' found", tbl_schema.name))?;
+    let cols = match parse_sql_stmt(tbl_sql)? {
         SqlStmt::CreateTbl { col_names, .. } => col_names,
-        _ => bail!(
-            "Expected CREATE TABLE statement but got:\n{}",
-            tbl_schema.sql
-        ),
+        _ => bail!("Expected CREATE TABLE statement but got:\n{}", tbl_sql),
     };
 
     let col_idx = cols.iter().position(|&c| c == col).ok_or(anyhow!(
