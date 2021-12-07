@@ -25,12 +25,12 @@ pub enum SqlStmt<'a> {
         col_names: Vec<&'a str>,
     },
     Select {
-        col: Expr<'a>,
+        cols: Vec<Expr<'a>>,
         tbl: &'a str,
     },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Expr<'a> {
     ColName(&'a str),
     Count,
@@ -54,11 +54,12 @@ fn dot_cmd(i: &str) -> R<DotCmd> {
     )(i)
 }
 
-fn select_result_col(i: &str) -> R<Expr> {
-    alt((
+fn select_result_cols(i: &str) -> R<Vec<Expr>> {
+    comma_separated_list1(alt((
         value(Expr::Count, tag_no_case("COUNT(*)")),
         identifier.map(Expr::ColName),
-    ))(i)
+    )))
+    .parse(i)
 }
 
 fn select_stmt(i: &str) -> R<SqlStmt> {
@@ -66,12 +67,15 @@ fn select_stmt(i: &str) -> R<SqlStmt> {
         skip(multispace0),
         skip(tag_no_case("SELECT")),
         skip(multispace1),
-        select_result_col,
+        select_result_cols,
         skip(delimited_ws1(tag_no_case("FROM"))),
         identifier,
         skip(multispace0),
     ))
-    .map(|x| SqlStmt::Select { col: x.3, tbl: x.5 })
+    .map(|x| SqlStmt::Select {
+        cols: x.3,
+        tbl: x.5,
+    })
     .parse(i)
 }
 

@@ -1,12 +1,6 @@
 use anyhow::{anyhow, bail, Result};
 use sqlite_starter_rust::{cell::*, db_header::*, page_header::*, schema::*, sql::*, str_sim::*};
-use std::{
-    borrow::*,
-    convert::{From, TryFrom, TryInto},
-    env::args,
-    fs::File,
-    io::prelude::*,
-};
+use std::{borrow::*, collections::HashMap, convert::*, env::args, fs::File, io::prelude::*};
 
 fn main() -> Result<()> {
     let args = validate(args().collect::<Vec<_>>())?;
@@ -46,16 +40,28 @@ fn run_dot_cmd(cmd: DotCmd, db: &Vec<u8>) -> Result<()> {
 }
 
 fn run_sql_stmt(stmt: SqlStmt, db: &Vec<u8>) -> Result<()> {
+    fn is_count_expr(cols: &[Expr]) -> bool {
+        cols.len() == 1 && cols[0] == Expr::Count
+    }
+
+    fn get_col_names(cols: Vec<Expr>) -> Result<Vec<&str>> {
+        cols.iter()
+            .map(|c| match c {
+                Expr::ColName(name) => Ok(*name),
+                _ => bail!("Unexpected expression among result columns: {:?}", c),
+            })
+            .collect::<Result<Vec<_>>>()
+    }
+
     match stmt {
-        SqlStmt::Select {
-            col: Expr::Count,
-            tbl,
-        } => count_rows(tbl, db),
-        SqlStmt::Select {
-            col: Expr::ColName(col),
-            tbl,
-        } => select_col(col, tbl, db),
-        _ => bail!("not implemented: {:#?}", stmt),
+        SqlStmt::Select { cols, tbl } => {
+            if is_count_expr(&cols) {
+                count_rows(tbl, db)
+            } else {
+                select_cols(get_col_names(cols)?, tbl, db)
+            }
+        }
+        _ => bail!("Not implemented: {:#?}", stmt),
     }
 }
 
@@ -108,7 +114,7 @@ fn count_rows(tbl: &str, db: &Vec<u8>) -> Result<()> {
     Ok(())
 }
 
-fn select_col(col: &str, tbl: &str, db: &Vec<u8>) -> Result<()> {
+fn select_cols(result_cols: Vec<&str>, tbl: &str, db: &Vec<u8>) -> Result<()> {
     let page_size: usize = DbHeader::parse(db)?.page_size.into();
 
     let tbl_schema = parse_db_schema(db)?
@@ -118,16 +124,28 @@ fn select_col(col: &str, tbl: &str, db: &Vec<u8>) -> Result<()> {
     let tbl_sql = tbl_schema
         .sql
         .ok_or_else(|| anyhow!("No CREATE statment for object '{}' found", tbl_schema.name))?;
-    let cols = match parse_sql_stmt(tbl_sql)? {
+    let tbl_cols = match parse_sql_stmt(tbl_sql)? {
         SqlStmt::CreateTbl { col_names, .. } => col_names,
         _ => bail!("Expected CREATE TABLE statement but got:\n{}", tbl_sql),
     };
 
-    let col_idx = cols.iter().position(|&c| c == col).ok_or(anyhow!(
-        "Unknown column '{}'. Did you mean '{}'?",
-        col,
-        most_similar(col, &cols).unwrap()
-    ))?;
+    result_cols.iter().try_for_each(|col| {
+        if !tbl_cols.contains(col) {
+            bail!(
+                "Unknown column '{}'. Did you mean '{}'?",
+                col,
+                most_similar(col, &tbl_cols).unwrap()
+            )
+        } else {
+            Ok(())
+        }
+    })?;
+
+    let col_name_to_idx = tbl_cols
+        .iter()
+        .enumerate()
+        .map(|(i, c)| (c, i))
+        .collect::<HashMap<_, _>>();
 
     let page_offset = usize::try_from(tbl_schema.rootpage - 1)? * page_size;
 
@@ -140,7 +158,13 @@ fn select_col(col: &str, tbl: &str, db: &Vec<u8>) -> Result<()> {
         .take(page_header.number_of_cells.into())
         .map(|bytes| usize::from(u16::from_be_bytes(bytes.try_into().unwrap())))
         .map(|cell_pointer| {
-            Cell::parse(&page[cell_pointer..]).map(|cell| format!("{}", cell.payload[col_idx]))
+            Cell::parse(&page[cell_pointer..]).map(|cell| {
+                result_cols
+                    .iter()
+                    .map(|c| format!("{}", cell.payload[col_name_to_idx[c]]))
+                    .collect::<Vec<_>>()
+                    .join("|")
+            })
         })
         .collect::<Result<Vec<_>>>()?
         .join("\n");
