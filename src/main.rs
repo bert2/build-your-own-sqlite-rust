@@ -1,13 +1,13 @@
 use anyhow::{anyhow, bail, Result};
-use sqlite_starter_rust::{
-    cell::*, db_header::*, page_header::*, schema::*, sql::*, str_sim::*, util::*,
-};
+use sqlite_starter_rust::{cell::*, page_header::*, schema::*, sql::*, str_sim::*, util::*};
 use std::{borrow::*, collections::HashMap, convert::*, env::args, fs::File, io::prelude::*};
 
 fn main() -> Result<()> {
     let args = validate(args().collect::<Vec<_>>())?;
     let db = read_db(&args[1])?;
-    parse_and_run(&args[2], &db)
+    let output = parse_and_run(&args[2], &db)?;
+    println!("{}", output);
+    Ok(())
 }
 
 fn validate(args: Vec<String>) -> Result<Vec<String>> {
@@ -25,7 +25,7 @@ fn read_db(file: &str) -> Result<Vec<u8>> {
     Ok(db)
 }
 
-fn parse_and_run(sql: &str, db: &Vec<u8>) -> Result<()> {
+fn parse_and_run(sql: &str, db: &Vec<u8>) -> Result<String> {
     match parse_sqlite(sql) {
         Ok(Sqlite::DotCmd(cmd)) => run_dot_cmd(cmd, db),
         Ok(Sqlite::SqlStmt(stmt)) => run_sql_stmt(stmt, db),
@@ -33,7 +33,7 @@ fn parse_and_run(sql: &str, db: &Vec<u8>) -> Result<()> {
     }
 }
 
-fn run_dot_cmd(cmd: DotCmd, db: &Vec<u8>) -> Result<()> {
+fn run_dot_cmd(cmd: DotCmd, db: &Vec<u8>) -> Result<String> {
     match cmd {
         DotCmd::DbInfo => dbinfo(db),
         DotCmd::Tables => tables(db),
@@ -41,7 +41,7 @@ fn run_dot_cmd(cmd: DotCmd, db: &Vec<u8>) -> Result<()> {
     }
 }
 
-fn run_sql_stmt(stmt: SqlStmt, db: &Vec<u8>) -> Result<()> {
+fn run_sql_stmt(stmt: SqlStmt, db: &Vec<u8>) -> Result<String> {
     fn is_count_expr(cols: &[Expr]) -> bool {
         cols.len() == 1 && cols[0] == Expr::Count
     }
@@ -67,61 +67,75 @@ fn run_sql_stmt(stmt: SqlStmt, db: &Vec<u8>) -> Result<()> {
     }
 }
 
-fn dbinfo(db: &Vec<u8>) -> Result<()> {
-    let db_header = DbHeader::parse(&db[..100])?;
-    println!("{:#?}", db_header);
-    let schema = parse_db_schema(db)?;
-    println!("number of tables: {}", schema.len());
-    Ok(())
+fn dbinfo(db: &Vec<u8>) -> Result<String> {
+    let s = DbSchema::parse(db)?;
+    let h = &s.db_header;
+    let mut o = vec![];
+
+    o.push(format!("database page size:  {}", h.page_size));
+    o.push(format!("write format:        {}", h.write_format));
+    o.push(format!("read format:         {}", h.read_format));
+    o.push(format!("reserved bytes:      {}", h.reserved_bytes));
+    o.push(format!("file change counter: {}", h.file_change_counter));
+    o.push(format!("database page count: {}", h.db_page_count));
+    o.push(format!("freelist page count: {}", h.freelist_page_count));
+    o.push(format!("schema cookie:       {}", h.schema_cookie));
+    o.push(format!("schema format:       {}", h.schema_format));
+    o.push(format!("default cache size:  {}", h.default_cache_size));
+    o.push(format!("autovacuum top root: {}", h.autovacuum_top_root));
+    o.push(format!("incremental vacuum:  {}", h.incremental_vacuum));
+    o.push(format!("text encoding:       {}", h.text_encoding));
+    o.push(format!("user version:        {}", h.user_version));
+    o.push(format!("application id:      {}", h.application_id));
+    o.push(format!("software version:    {}", h.software_version));
+    o.push(format!("number of tables:    {}", s.tables().count()));
+    o.push(format!("number of indexes:   {}", s.indexes().count()));
+    o.push(format!("number of triggers:  {}", s.triggers().count()));
+    o.push(format!("number of views:     {}", s.views().count()));
+    o.push(format!("schema size:         {}", s.size));
+
+    Ok(o.join("\n"))
 }
 
-fn tables(db: &Vec<u8>) -> Result<()> {
-    let names = parse_db_schema(db)?
-        .into_iter()
-        .map(|schema| schema.name)
+fn tables(db: &Vec<u8>) -> Result<String> {
+    Ok(DbSchema::parse(db)?
+        .tables()
+        .map(|t| t.name)
         .collect::<Vec<_>>()
-        .join(" ");
-    println!("{}", names);
-    Ok(())
+        .join(" "))
 }
 
-fn schema(db: &Vec<u8>) -> Result<()> {
-    fn get_sql(schema: Schema) -> Cow<str> {
+fn schema(db: &Vec<u8>) -> Result<String> {
+    fn get_sql<'a>(schema: &Schema<'a>) -> Cow<'a, str> {
         schema
             .sql
             .map(Cow::from)
             .unwrap_or_else(|| format!("[Object '{}' has no CREATE statement]", schema.name).into())
     }
 
-    let sqls = parse_db_schema(db)?
-        .into_iter()
+    Ok(DbSchema::parse(db)?
+        .tables()
         .map(get_sql)
         .collect::<Vec<_>>()
-        .join("\n");
-
-    println!("{}", sqls);
-
-    Ok(())
+        .join("\n"))
 }
 
-fn count_rows(tbl: &str, db: &Vec<u8>) -> Result<()> {
-    let page_size = DbHeader::parse(&db[..100])?.page_size;
-    let tbl_schema = parse_db_schema(db)?
-        .into_iter()
-        .find(|x| x.type_ == "table" && x.name == tbl)
+fn count_rows(tbl: &str, db: &Vec<u8>) -> Result<String> {
+    let db_schema = DbSchema::parse(db)?;
+    let page_size: usize = db_schema.db_header.page_size.into();
+    let tbl_schema = db_schema
+        .table(tbl)
         .ok_or(anyhow!("Table '{}' not found", tbl))?;
-    let page_offset = usize::try_from(tbl_schema.rootpage - 1)? * usize::from(page_size);
-    let page_header = PageHeader::parse(&db[page_offset..page_offset + 12])?;
-    println!("{}", page_header.number_of_cells);
-    Ok(())
+    let page_offset = tbl_schema.offset(page_size);
+    let page_header = PageHeader::parse(&db[page_offset..])?;
+    Ok(format!("{}", page_header.number_of_cells))
 }
 
-fn select_cols(result_cols: Vec<&str>, tbl: &str, db: &Vec<u8>) -> Result<()> {
-    let page_size: usize = DbHeader::parse(db)?.page_size.into();
-
-    let tbl_schema = parse_db_schema(db)?
-        .into_iter()
-        .find(|x| x.type_ == "table" && x.name == tbl)
+fn select_cols(result_cols: Vec<&str>, tbl: &str, db: &Vec<u8>) -> Result<String> {
+    let db_schema = DbSchema::parse(db)?;
+    let page_size: usize = db_schema.db_header.page_size.into();
+    let tbl_schema = db_schema
+        .table(tbl)
         .ok_or(anyhow!("Table '{}' not found", tbl))?;
     let tbl_sql = tbl_schema
         .sql
@@ -155,7 +169,7 @@ fn select_cols(result_cols: Vec<&str>, tbl: &str, db: &Vec<u8>) -> Result<()> {
         .map(flip)
         .collect::<HashMap<_, _>>();
 
-    let page_offset = usize::try_from(tbl_schema.rootpage - 1)? * page_size;
+    let page_offset = tbl_schema.offset(page_size);
 
     let page = &db[page_offset..page_offset + page_size];
 
@@ -183,18 +197,5 @@ fn select_cols(result_cols: Vec<&str>, tbl: &str, db: &Vec<u8>) -> Result<()> {
         .collect::<Result<Vec<_>>>()?
         .join("\n");
 
-    println!("{}", col_values);
-
-    Ok(())
-}
-
-fn parse_db_schema(db: &[u8]) -> Result<Vec<Schema>> {
-    let page_header = PageHeader::parse(&db[100..])?;
-
-    db[100 + page_header.size()..]
-        .chunks_exact(2)
-        .take(page_header.number_of_cells.into())
-        .map(|bytes| usize::from(u16::from_be_bytes(bytes.try_into().unwrap())))
-        .map(|cell_pointer| Cell::parse(&db[cell_pointer..]).and_then(Schema::parse))
-        .collect::<Result<Vec<_>>>()
+    Ok(col_values)
 }

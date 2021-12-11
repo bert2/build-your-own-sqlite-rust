@@ -1,7 +1,7 @@
 use anyhow::{bail, Result};
-use std::convert::TryInto;
+use std::{convert::TryInto, fmt};
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum Enc {
     Utf8 = 1,
     Utf16Le = 2,
@@ -30,12 +30,13 @@ pub struct DbHeader {
     pub user_version: u32,
     pub incremental_vacuum: u32,
     pub application_id: u32,
-    pub reserved: [u8; 20],
     pub version_valid_for: u32,
     pub software_version: u32,
 }
 
 impl DbHeader {
+    pub const SIZE: usize = 100;
+
     pub fn parse(stream: &[u8]) -> Result<Self> {
         Ok(DbHeader {
             header_string: String::from_utf8_lossy(&stream[..16]).to_string(),
@@ -63,9 +64,19 @@ impl DbHeader {
             user_version: u32::from_be_bytes(stream[60..64].try_into()?),
             incremental_vacuum: u32::from_be_bytes(stream[64..68].try_into()?),
             application_id: u32::from_be_bytes(stream[68..72].try_into()?),
-            reserved: stream[72..92].try_into()?,
             version_valid_for: u32::from_be_bytes(stream[92..96].try_into()?),
             software_version: u32::from_be_bytes(stream[96..100].try_into()?),
         })
+    }
+}
+
+impl fmt::Display for Enc {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{} ({})",
+            *self as u8,
+            format!("{:?}", self).to_lowercase()
+        )
     }
 }
