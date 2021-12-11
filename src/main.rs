@@ -1,5 +1,7 @@
 use anyhow::{anyhow, bail, Result};
-use sqlite_starter_rust::{cell::*, db_header::*, page_header::*, schema::*, sql::*, str_sim::*};
+use sqlite_starter_rust::{
+    cell::*, db_header::*, page_header::*, schema::*, sql::*, str_sim::*, util::*,
+};
 use std::{borrow::*, collections::HashMap, convert::*, env::args, fs::File, io::prelude::*};
 
 fn main() -> Result<()> {
@@ -124,27 +126,33 @@ fn select_cols(result_cols: Vec<&str>, tbl: &str, db: &Vec<u8>) -> Result<()> {
     let tbl_sql = tbl_schema
         .sql
         .ok_or_else(|| anyhow!("No CREATE statment for object '{}' found", tbl_schema.name))?;
-    let tbl_cols = match parse_sql_stmt(tbl_sql)? {
-        SqlStmt::CreateTbl { col_names, .. } => col_names,
+
+    let tbl_col_defs = match parse_sql_stmt(tbl_sql)? {
+        SqlStmt::CreateTbl { col_defs, .. } => col_defs,
         _ => bail!("Expected CREATE TABLE statement but got:\n{}", tbl_sql),
     };
+    let pk_col_name = tbl_col_defs
+        .iter()
+        .find(ColDef::is_int_pk)
+        .map(ColDef::name);
+    let tbl_col_names = tbl_col_defs.iter().map(ColDef::name).collect::<Vec<_>>();
 
     result_cols.iter().try_for_each(|col| {
-        if !tbl_cols.contains(col) {
+        if !tbl_col_names.contains(col) {
             bail!(
                 "Unknown column '{}'. Did you mean '{}'?",
                 col,
-                most_similar(col, &tbl_cols).unwrap()
+                most_similar(col, &tbl_col_names).unwrap()
             )
         } else {
             Ok(())
         }
     })?;
 
-    let col_name_to_idx = tbl_cols
+    let col_name_to_idx = tbl_col_names
         .iter()
         .enumerate()
-        .map(|(i, c)| (c, i))
+        .map(flip)
         .collect::<HashMap<_, _>>();
 
     let page_offset = usize::try_from(tbl_schema.rootpage - 1)? * page_size;
@@ -161,7 +169,13 @@ fn select_cols(result_cols: Vec<&str>, tbl: &str, db: &Vec<u8>) -> Result<()> {
             Cell::parse(&page[cell_pointer..]).map(|cell| {
                 result_cols
                     .iter()
-                    .map(|c| format!("{}", cell.payload[col_name_to_idx[c]]))
+                    .map(|res_col| {
+                        if opt_contains(&pk_col_name, res_col) {
+                            cell.row_id.to_string()
+                        } else {
+                            format!("{}", &cell.payload[col_name_to_idx[res_col]])
+                        }
+                    })
                     .collect::<Vec<_>>()
                     .join("|")
             })

@@ -6,4 +6,5 @@ pub mod record;
 pub mod schema;
 pub mod sql;
 pub mod str_sim;
+pub mod util;
 pub mod varint;

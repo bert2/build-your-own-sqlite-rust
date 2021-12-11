@@ -5,7 +5,7 @@ use nom::{
     Finish, IResult, Parser,
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum Sqlite<'a> {
     DotCmd(DotCmd),
     SqlStmt(SqlStmt<'a>),
@@ -18,11 +18,33 @@ pub enum DotCmd {
     Schema,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, PartialEq)]
+pub enum ColDef<'a> {
+    IntPk(&'a str),
+    Col(&'a str),
+}
+
+impl<'a> ColDef<'a> {
+    pub fn is_int_pk(self: &&ColDef<'a>) -> bool {
+        match self {
+            ColDef::IntPk(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn name(&self) -> &'a str {
+        match self {
+            ColDef::IntPk(n) => *n,
+            ColDef::Col(n) => *n,
+        }
+    }
+}
+
+#[derive(Debug)]
 pub enum SqlStmt<'a> {
     CreateTbl {
         tbl_name: &'a str,
-        col_names: Vec<&'a str>,
+        col_defs: Vec<ColDef<'a>>,
     },
     Select {
         cols: Vec<Expr<'a>>,
@@ -79,8 +101,19 @@ fn select_stmt(i: &str) -> R<SqlStmt> {
     .parse(i)
 }
 
-fn create_tbl_coldef(i: &str) -> R<&str> {
-    terminated(identifier, take_while(|c| c != ',' && c != ')'))(i)
+fn create_tbl_coldef(i: &str) -> R<ColDef> {
+    let int_pk_col = tuple((
+        identifier,
+        skip(preceded_ws1(tag_no_case("INTEGER"))),
+        skip(preceded_ws1(tag_no_case("PRIMARY"))),
+        skip(preceded_ws1(tag_no_case("KEY"))),
+        skip(take_while(|c| c != ',' && c != ')')),
+    ))
+    .map(|x| ColDef::IntPk(x.0));
+
+    let other_col = terminated(identifier, take_while(|c| c != ',' && c != ')')).map(ColDef::Col);
+
+    alt((int_pk_col, other_col))(i)
 }
 
 fn create_tbl_stmt(i: &str) -> R<SqlStmt> {
@@ -94,7 +127,7 @@ fn create_tbl_stmt(i: &str) -> R<SqlStmt> {
     ))
     .map(|x| SqlStmt::CreateTbl {
         tbl_name: x.2,
-        col_names: x.4,
+        col_defs: x.4,
     })
     .parse(i)
 }
