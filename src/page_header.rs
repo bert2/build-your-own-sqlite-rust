@@ -26,7 +26,7 @@ impl PageHeader {
             5 => BTreePage::InteriorTable,
             10 => BTreePage::LeafIndex,
             13 => BTreePage::LeafTable,
-            x => bail!("Invalid page value encountered: {}", x),
+            x => bail!("Invalid page type encountered: {}", x),
         };
         let first_free_block_start = u16::from_be_bytes(stream[1..3].try_into()?);
         let number_of_cells = u16::from_be_bytes(stream[3..5].try_into()?);

@@ -1,8 +1,8 @@
 use crate::nom_helpers::*;
 use anyhow::{anyhow, Result};
 use nom::{
-    branch::*, bytes::complete::*, character::complete::*, combinator::*, error::*, sequence::*,
-    Finish, IResult, Parser,
+    branch::*, bytes::complete::*, character::complete::*, character::is_alphanumeric,
+    combinator::*, error::*, sequence::*, Finish, IResult, Parser,
 };
 
 #[derive(Debug)]
@@ -61,7 +61,7 @@ pub enum Expr<'a> {
 type R<'a, O> = IResult<&'a str, O, VerboseError<&'a str>>;
 
 fn identifier(i: &str) -> R<&str> {
-    alpha1(i)
+    take_while1(|c| c == '_' || is_alphanumeric(c as u8))(i)
 }
 
 fn dot_cmd(i: &str) -> R<DotCmd> {
@@ -133,11 +133,14 @@ fn create_tbl_stmt(i: &str) -> R<SqlStmt> {
 }
 
 fn sql_stmt(i: &str) -> R<SqlStmt> {
-    alt((select_stmt, create_tbl_stmt))(i)
+    terminated(alt((select_stmt, create_tbl_stmt)), eof)(i)
 }
 
 fn sqlite(i: &str) -> R<Sqlite> {
-    alt((dot_cmd.map(Sqlite::DotCmd), sql_stmt.map(Sqlite::SqlStmt)))(i)
+    terminated(
+        alt((dot_cmd.map(Sqlite::DotCmd), sql_stmt.map(Sqlite::SqlStmt))),
+        eof,
+    )(i)
 }
 
 pub fn parse_sqlite(sql: &str) -> Result<Sqlite> {

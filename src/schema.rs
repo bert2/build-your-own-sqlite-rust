@@ -1,6 +1,6 @@
-use crate::{cell::*, db_header::*, page_header::*};
+use crate::{cell::*, db_header::*, page::*, sql::*, util::*};
 use anyhow::*;
-use std::convert::*;
+use std::{collections::HashMap, convert::*};
 
 #[derive(Debug)]
 pub struct DbSchema<'a> {
@@ -16,30 +16,38 @@ pub struct Schema<'a> {
     pub tbl_name: &'a str,
     pub rootpage: i64,
     pub sql: Option<&'a str>,
+    pub cols: Option<Cols<'a>>,
+}
+
+#[derive(Debug)]
+pub struct Cols<'a> {
+    pub int_pk: Option<&'a str>,
+    pub name_to_idx: HashMap<&'a str, usize>,
 }
 
 impl<'a> DbSchema<'a> {
-    pub fn parse(db: &[u8]) -> Result<DbSchema> {
+    pub fn parse(db: &'a [u8]) -> Result<DbSchema<'a>> {
         let db_header = DbHeader::parse(&db[..DbHeader::SIZE])?;
-        let page_header = PageHeader::parse(&db[DbHeader::SIZE..])?;
-        let objs = db[DbHeader::SIZE + page_header.size()..]
-            .chunks_exact(2)
-            .take(page_header.number_of_cells.into())
-            .map(|bytes| usize::from(u16::from_be_bytes(bytes.try_into().unwrap())))
-            .map(|cell_pointer| Cell::parse(&db[cell_pointer..]).and_then(Schema::parse))
-            .collect::<Result<Vec<_>>>()?;
-        let size =
-            usize::from(db_header.page_size - page_header.start_of_content_area) - DbHeader::SIZE;
+        let page_size = db_header.page_size.into();
+        let page = Page::parse_schema(page_size, db)?;
+        let page_content_offset: usize = page.header.start_of_content_area.into();
 
         Ok(DbSchema {
             db_header,
-            objs,
-            size,
+            objs: page
+                .cells()?
+                .iter()
+                .map(Schema::parse)
+                .collect::<Result<Vec<_>>>()?,
+            size: page_size - page_content_offset - DbHeader::SIZE,
         })
     }
 
-    pub fn table(&self, name: &str) -> Option<&Schema<'a>> {
-        self.tables().find(|t| t.name == name)
+    pub fn table(self, name: &str) -> Option<Schema<'a>> {
+        self.objs
+            .into_iter()
+            .filter(|s| s.is_table())
+            .find(|t| t.name == name)
     }
 
     pub fn tables(&self) -> impl Iterator<Item = &Schema<'a>> {
@@ -60,24 +68,34 @@ impl<'a> DbSchema<'a> {
 }
 
 impl<'a> Schema<'a> {
-    pub fn parse(record: Cell<'a>) -> Result<Self> {
+    pub fn parse(record: &Cell<'a>) -> Result<Self> {
+        let type_ = <&str>::try_from(&record.payload[0])
+            .map_err(|e| anyhow!("Unexpected value in column 'type': {}", e))?;
+        let name = <&str>::try_from(&record.payload[1])
+            .map_err(|e| anyhow!("Unexpected value in column 'name': {}", e))?;
+        let tbl_name = <&str>::try_from(&record.payload[2])
+            .map_err(|e| anyhow!("Unexpected value in column 'tbl_name': {}", e))?;
+        let rootpage = i64::try_from(&record.payload[3])
+            .map_err(|e| anyhow!("Unexpected value in column 'rootpage': {}", e))?;
+        let sql = Option::<&str>::try_from(&record.payload[4])
+            .map_err(|e| anyhow!("Unexpected value in column 'sql': {}", e))?;
+        let cols = sql.map(Cols::parse).transpose()?;
+
         Ok(Schema {
-            type_: <&str>::try_from(&record.payload[0])
-                .map_err(|e| anyhow!("Unexpected value in column 'type': {}", e))?,
-            name: <&str>::try_from(&record.payload[1])
-                .map_err(|e| anyhow!("Unexpected value in column 'name': {}", e))?,
-            tbl_name: <&str>::try_from(&record.payload[2])
-                .map_err(|e| anyhow!("Unexpected value in column 'tbl_name': {}", e))?,
-            rootpage: i64::try_from(&record.payload[3])
-                .map_err(|e| anyhow!("Unexpected value in column 'rootpage': {}", e))?,
-            sql: Option::<&str>::try_from(&record.payload[4])
-                .map_err(|e| anyhow!("Unexpected value in column 'sql': {}", e))?,
+            type_,
+            name,
+            tbl_name,
+            rootpage,
+            sql,
+            cols,
         })
     }
 
-    pub fn offset(&self, page_size: usize) -> usize {
-        debug_assert!(self.rootpage > 0);
-        (self.rootpage - 1) as usize * page_size
+    pub fn cols(&self) -> &Cols {
+        self.cols.as_ref().expect(&format!(
+            "Columns of object '{}' are unknown, because no CREATE statement was found in schema record",
+            self.name
+        ))
     }
 
     pub fn is_table(self: &&Schema<'a>) -> bool {
@@ -94,5 +112,40 @@ impl<'a> Schema<'a> {
 
     pub fn is_trigger(self: &&Schema<'a>) -> bool {
         self.type_ == "trigger"
+    }
+}
+
+impl<'a> Cols<'a> {
+    pub fn parse(tbl_sql: &'a str) -> Result<Cols<'a>> {
+        let col_defs = match parse_sql_stmt(tbl_sql)? {
+            SqlStmt::CreateTbl { col_defs, .. } => col_defs,
+            _ => bail!("Expected CREATE TABLE statement but got:\n{}", tbl_sql),
+        };
+
+        Ok(Cols {
+            int_pk: col_defs.iter().find(ColDef::is_int_pk).map(ColDef::name),
+            name_to_idx: col_defs
+                .iter()
+                .map(ColDef::name)
+                .enumerate()
+                .map(flip)
+                .collect::<HashMap<_, _>>(),
+        })
+    }
+
+    pub fn names(&self) -> Vec<&str> {
+        self.name_to_idx.keys().map(|&c| c).collect::<Vec<_>>()
+    }
+
+    pub fn has(&self, col: &str) -> bool {
+        self.name_to_idx.contains_key(col)
+    }
+
+    pub fn is_int_pk(&self, col: &str) -> bool {
+        opt_contains(&self.int_pk, &col)
+    }
+
+    pub fn index(&self, col: &str) -> usize {
+        self.name_to_idx[col]
     }
 }
