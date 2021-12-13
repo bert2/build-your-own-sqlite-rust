@@ -54,6 +54,7 @@ pub enum Expr<'a> {
 #[derive(Debug, PartialEq)]
 pub enum BoolExpr<'a> {
     Equals { l: Expr<'a>, r: Expr<'a> },
+    NotEquals { l: Expr<'a>, r: Expr<'a> },
 }
 
 type R<'a, O> = IResult<&'a str, O, VerboseError<&'a str>>;
@@ -122,10 +123,14 @@ fn select_filter(i: &str) -> R<BoolExpr> {
     tuple((
         skip(delimited_ws1(tag_no_case("WHERE"))),
         expr,
-        skip(delimited_ws0(char('='))),
+        delimited_ws0(alt((tag("=="), tag("="), tag("!="), tag("<>")))),
         expr,
     ))
-    .map(|x| BoolExpr::Equals { l: x.1, r: x.3 })
+    .map(|x| match x.2 {
+        "==" | "=" => BoolExpr::Equals { l: x.1, r: x.3 },
+        "!=" | "<>" => BoolExpr::NotEquals { l: x.1, r: x.3 },
+        _ => panic!("Unsupported operator {}", x.2),
+    })
     .parse(i)
 }
 

@@ -156,20 +156,20 @@ impl<'a> From<&ColContent<'a>> for Value<'a> {
 }
 
 trait Eval<'a> {
-    fn eval(&self, cell: &Cell<'a>, schema: &Schema<'a>) -> Value<'a>;
+    fn eval(&self, c: &Cell<'a>, s: &Schema<'a>) -> Value<'a>;
 }
 
 impl<'a> Eval<'a> for Expr<'a> {
-    fn eval(&self, cell: &Cell<'a>, schema: &Schema<'a>) -> Value<'a> {
+    fn eval(&self, c: &Cell<'a>, s: &Schema<'a>) -> Value<'a> {
         match self {
             Expr::Null => Value::Null,
             Expr::String(s) => Value::String(s),
             Expr::Int(i) => Value::Int(*i),
             Expr::ColName(col) => {
-                if schema.cols().is_int_pk(col) {
-                    Value::Int(cell.row_id)
+                if s.cols().is_int_pk(col) {
+                    Value::Int(c.row_id)
                 } else {
-                    (&cell.payload[schema.cols().index(col)]).into()
+                    (&c.payload[s.cols().index(col)]).into()
                 }
             }
         }
@@ -177,9 +177,10 @@ impl<'a> Eval<'a> for Expr<'a> {
 }
 
 impl<'a> Eval<'a> for BoolExpr<'a> {
-    fn eval(&self, cell: &Cell<'a>, schema: &Schema<'a>) -> Value<'a> {
+    fn eval(&self, c: &Cell<'a>, s: &Schema<'a>) -> Value<'a> {
         match self {
-            BoolExpr::Equals { l, r } => Value::Bool(l.eval(cell, schema) == r.eval(cell, schema)),
+            BoolExpr::Equals { l, r } => Value::Bool(l.eval(c, s) == r.eval(c, s)),
+            BoolExpr::NotEquals { l, r } => Value::Bool(l.eval(c, s) != r.eval(c, s)),
         }
     }
 }
