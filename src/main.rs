@@ -1,5 +1,10 @@
 use anyhow::{anyhow, bail, Result};
-use sqlite_starter_rust::{cell::*, page::*, record::*, schema::*, sql::*, str_sim::*};
+use sqlite_starter_rust::{
+    format::{cell::*, page::*, record::*},
+    schema::*,
+    str_sim::*,
+    syntax::{ast::*, parser::*},
+};
 use std::{borrow::*, convert::*, env::args, fs::File, io::prelude::*};
 
 fn main() -> Result<()> {

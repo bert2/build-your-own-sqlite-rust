@@ -1,4 +1,4 @@
-use crate::varint::parse_varint;
+use crate::format::varint::*;
 use anyhow::bail;
 use std::{
     convert::{TryFrom, TryInto},

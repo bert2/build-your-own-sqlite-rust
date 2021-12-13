@@ -1,79 +1,11 @@
-use crate::nom_helpers::*;
+use crate::syntax::{ast::*, util::*};
 use anyhow::{anyhow, Result};
 use nom::{
     branch::*, bytes::complete::*, character::complete::*, combinator::*, error::*, multi::many0,
     sequence::*, Finish, IResult, Parser,
 };
 
-#[derive(Debug, PartialEq)]
-pub enum Sqlite<'a> {
-    DotCmd(DotCmd),
-    SqlStmt(SqlStmt<'a>),
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum DotCmd {
-    DbInfo,
-    Tables,
-    Schema,
-}
-
-#[derive(Debug, PartialEq)]
-pub enum ColDef<'a> {
-    IntPk(&'a str),
-    Col(&'a str),
-}
-
-#[derive(Debug, PartialEq)]
-pub enum SqlStmt<'a> {
-    CreateTbl {
-        tbl_name: &'a str,
-        col_defs: Vec<ColDef<'a>>,
-    },
-    Select {
-        cols: Vec<ResultExpr<'a>>,
-        tbl: &'a str,
-        filter: Option<BoolExpr<'a>>,
-    },
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum ResultExpr<'a> {
-    Count,
-    Value(Expr<'a>),
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum Expr<'a> {
-    Null,
-    String(&'a str),
-    Int(i64),
-    ColName(&'a str),
-}
-
-#[derive(Debug, PartialEq)]
-pub enum BoolExpr<'a> {
-    Equals { l: Expr<'a>, r: Expr<'a> },
-    NotEquals { l: Expr<'a>, r: Expr<'a> },
-}
-
 type R<'a, O> = IResult<&'a str, O, VerboseError<&'a str>>;
-
-impl<'a> ColDef<'a> {
-    pub fn is_int_pk(self: &&ColDef<'a>) -> bool {
-        match self {
-            ColDef::IntPk(_) => true,
-            _ => false,
-        }
-    }
-
-    pub fn name(&self) -> &'a str {
-        match self {
-            ColDef::IntPk(n) => *n,
-            ColDef::Col(n) => *n,
-        }
-    }
-}
 
 fn str_lit(i: &str) -> R<&str> {
     delimited(char('\''), is_not("'"), char('\''))(i)
