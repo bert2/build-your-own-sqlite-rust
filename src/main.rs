@@ -1,5 +1,5 @@
 use anyhow::{anyhow, bail, Result};
-use sqlite_starter_rust::{page::*, schema::*, sql::*, str_sim::*};
+use sqlite_starter_rust::{cell::*, page::*, record::*, schema::*, sql::*, str_sim::*};
 use std::{borrow::*, convert::*, env::args, fs::File, io::prelude::*};
 
 fn main() -> Result<()> {
@@ -43,25 +43,25 @@ fn run_dot_cmd(cmd: DotCmd, db: &[u8]) -> Result<String> {
 }
 
 fn run_sql_stmt(stmt: SqlStmt, db: &[u8]) -> Result<String> {
-    fn is_count_expr(cols: &[Expr]) -> bool {
-        cols.len() == 1 && cols[0] == Expr::Count
+    fn is_count_expr(cols: &[ResultExpr]) -> bool {
+        cols.len() == 1 && cols[0] == ResultExpr::Count
     }
 
-    fn get_col_names<'a>(cols: &'a [Expr]) -> Result<Vec<&'a str>> {
+    fn get_col_names<'a>(cols: &'a [ResultExpr]) -> Result<Vec<&'a str>> {
         cols.iter()
             .map(|c| match c {
-                Expr::ColName(name) => Ok(*name),
+                ResultExpr::Value(Expr::ColName(name)) => Ok(*name),
                 _ => bail!("Unexpected expression among result columns: {:?}", c),
             })
             .collect::<Result<Vec<_>>>()
     }
 
     match stmt {
-        SqlStmt::Select { cols, tbl } => {
+        SqlStmt::Select { cols, tbl, filter } => {
             if is_count_expr(&cols) {
                 count_rows(tbl, db)
             } else {
-                select_cols(&get_col_names(&cols)?, tbl, db)
+                select_cols(&get_col_names(&cols)?, tbl, filter, db)
             }
         }
         _ => bail!("Not implemented: {:#?}", stmt),
@@ -126,7 +126,70 @@ fn count_rows(tbl: &str, db: &[u8]) -> Result<String> {
     Ok(format!("{}", page.header.number_of_cells))
 }
 
-fn select_cols(result_cols: &[&str], tbl: &str, db: &[u8]) -> Result<String> {
+#[derive(Debug, PartialEq)]
+pub enum Value<'a> {
+    Null,
+    Int(i64),
+    Float(f64),
+    Bool(bool),
+    Bytes(&'a [u8]),
+    String(&'a str),
+}
+
+impl<'a> From<&ColContent<'a>> for Value<'a> {
+    fn from(content: &ColContent<'a>) -> Self {
+        match content {
+            ColContent::Null => Value::Null,
+            ColContent::Int8(_)
+            | ColContent::Int16(_)
+            | ColContent::Int24(_)
+            | ColContent::Int32(_)
+            | ColContent::Int48(_)
+            | ColContent::Int64(_) => Value::Int(i64::try_from(content).unwrap()),
+            ColContent::Float64(_) => Value::Float(f64::try_from(content).unwrap()),
+            ColContent::False => Value::Bool(false),
+            ColContent::True => Value::Bool(true),
+            ColContent::Blob(bs) => Value::Bytes(bs),
+            ColContent::Text(_) => Value::String(<&str>::try_from(content).unwrap()),
+        }
+    }
+}
+
+trait Eval<'a> {
+    fn eval(&self, cell: &Cell<'a>, schema: &Schema<'a>) -> Value<'a>;
+}
+
+impl<'a> Eval<'a> for Expr<'a> {
+    fn eval(&self, cell: &Cell<'a>, schema: &Schema<'a>) -> Value<'a> {
+        match self {
+            Expr::Null => Value::Null,
+            Expr::String(s) => Value::String(s),
+            Expr::Int(i) => Value::Int(*i),
+            Expr::ColName(col) => {
+                if schema.cols().is_int_pk(col) {
+                    Value::Int(cell.row_id)
+                } else {
+                    (&cell.payload[schema.cols().index(col)]).into()
+                }
+            }
+        }
+    }
+}
+
+impl<'a> Eval<'a> for BoolExpr<'a> {
+    fn eval(&self, cell: &Cell<'a>, schema: &Schema<'a>) -> Value<'a> {
+        match self {
+            BoolExpr::Equals { l, r } => Value::Bool(l.eval(cell, schema) == r.eval(cell, schema)),
+        }
+    }
+}
+
+fn select_cols(
+    result_cols: &[&str],
+    tbl: &str,
+    filter: Option<BoolExpr>,
+    db: &[u8],
+) -> Result<String> {
     let (schema, page) = load_tbl(tbl, db)?;
 
     result_cols.iter().try_for_each(|col| {
@@ -144,6 +207,16 @@ fn select_cols(result_cols: &[&str], tbl: &str, db: &[u8]) -> Result<String> {
     Ok(page
         .cells()?
         .iter()
+        .filter(|cell| match &filter {
+            Some(expr) => {
+                if let Value::Bool(b) = expr.eval(cell, &schema) {
+                    b
+                } else {
+                    panic!("omg")
+                }
+            }
+            None => true,
+        })
         .map(|cell| {
             result_cols
                 .iter()
@@ -151,7 +224,7 @@ fn select_cols(result_cols: &[&str], tbl: &str, db: &[u8]) -> Result<String> {
                     if schema.cols().is_int_pk(res_col) {
                         cell.row_id.to_string()
                     } else {
-                        format!("{}", &cell.payload[schema.cols().index(res_col)])
+                        format!("{}", cell.payload[schema.cols().index(res_col)])
                     }
                 })
                 .collect::<Vec<_>>()

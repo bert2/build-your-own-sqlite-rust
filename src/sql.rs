@@ -1,17 +1,17 @@
 use crate::nom_helpers::*;
 use anyhow::{anyhow, Result};
 use nom::{
-    branch::*, bytes::complete::*, character::complete::*, character::is_alphanumeric,
-    combinator::*, error::*, sequence::*, Finish, IResult, Parser,
+    branch::*, bytes::complete::*, character::complete::*, combinator::*, error::*, multi::many0,
+    sequence::*, Finish, IResult, Parser,
 };
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Sqlite<'a> {
     DotCmd(DotCmd),
     SqlStmt(SqlStmt<'a>),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum DotCmd {
     DbInfo,
     Tables,
@@ -23,6 +23,40 @@ pub enum ColDef<'a> {
     IntPk(&'a str),
     Col(&'a str),
 }
+
+#[derive(Debug, PartialEq)]
+pub enum SqlStmt<'a> {
+    CreateTbl {
+        tbl_name: &'a str,
+        col_defs: Vec<ColDef<'a>>,
+    },
+    Select {
+        cols: Vec<ResultExpr<'a>>,
+        tbl: &'a str,
+        filter: Option<BoolExpr<'a>>,
+    },
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum ResultExpr<'a> {
+    Count,
+    Value(Expr<'a>),
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum Expr<'a> {
+    Null,
+    String(&'a str),
+    Int(i64),
+    ColName(&'a str),
+}
+
+#[derive(Debug, PartialEq)]
+pub enum BoolExpr<'a> {
+    Equals { l: Expr<'a>, r: Expr<'a> },
+}
+
+type R<'a, O> = IResult<&'a str, O, VerboseError<&'a str>>;
 
 impl<'a> ColDef<'a> {
     pub fn is_int_pk(self: &&ColDef<'a>) -> bool {
@@ -40,28 +74,28 @@ impl<'a> ColDef<'a> {
     }
 }
 
-#[derive(Debug)]
-pub enum SqlStmt<'a> {
-    CreateTbl {
-        tbl_name: &'a str,
-        col_defs: Vec<ColDef<'a>>,
-    },
-    Select {
-        cols: Vec<Expr<'a>>,
-        tbl: &'a str,
-    },
+fn str_lit(i: &str) -> R<&str> {
+    delimited(char('\''), is_not("'"), char('\''))(i)
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum Expr<'a> {
-    ColName(&'a str),
-    Count,
+fn num(i: &str) -> R<i64> {
+    map_res(digit1, str::parse)(i)
 }
 
-type R<'a, O> = IResult<&'a str, O, VerboseError<&'a str>>;
+pub fn identifier(i: &str) -> R<&str> {
+    recognize(pair(
+        alt((alpha1, tag("_"))),
+        many0(alt((alphanumeric1, tag("_")))),
+    ))(i)
+}
 
-fn identifier(i: &str) -> R<&str> {
-    take_while1(|c| c == '_' || is_alphanumeric(c as u8))(i)
+fn expr(i: &str) -> R<Expr> {
+    alt((
+        value(Expr::Null, tag_no_case("NULL")),
+        str_lit.map(Expr::String),
+        num.map(Expr::Int),
+        identifier.map(Expr::ColName),
+    ))(i)
 }
 
 fn dot_cmd(i: &str) -> R<DotCmd> {
@@ -76,11 +110,22 @@ fn dot_cmd(i: &str) -> R<DotCmd> {
     )(i)
 }
 
-fn select_result_cols(i: &str) -> R<Vec<Expr>> {
+fn select_result_cols(i: &str) -> R<Vec<ResultExpr>> {
     comma_separated_list1(alt((
-        value(Expr::Count, tag_no_case("COUNT(*)")),
-        identifier.map(Expr::ColName),
+        value(ResultExpr::Count, tag_no_case("COUNT(*)")),
+        identifier.map(Expr::ColName).map(ResultExpr::Value),
     )))
+    .parse(i)
+}
+
+fn select_filter(i: &str) -> R<BoolExpr> {
+    tuple((
+        skip(delimited_ws1(tag_no_case("WHERE"))),
+        expr,
+        skip(delimited_ws0(char('='))),
+        expr,
+    ))
+    .map(|x| BoolExpr::Equals { l: x.1, r: x.3 })
     .parse(i)
 }
 
@@ -92,11 +137,13 @@ fn select_stmt(i: &str) -> R<SqlStmt> {
         select_result_cols,
         skip(delimited_ws1(tag_no_case("FROM"))),
         identifier,
+        opt(select_filter),
         skip(multispace0),
     ))
     .map(|x| SqlStmt::Select {
         cols: x.3,
         tbl: x.5,
+        filter: x.6,
     })
     .parse(i)
 }
@@ -155,4 +202,52 @@ pub fn parse_sql_stmt(sql: &str) -> Result<SqlStmt> {
         .finish()
         .map(|r| r.1)
         .map_err(|e| anyhow!(convert_error(sql, e)))
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn select_single_col() {
+        assert_eq!(
+            parse_sql_stmt("select foo from bar").unwrap(),
+            SqlStmt::Select {
+                cols: vec![ResultExpr::Value(Expr::ColName("foo"))],
+                tbl: "bar",
+                filter: None
+            }
+        )
+    }
+
+    #[test]
+    fn select_multiple_cols() {
+        assert_eq!(
+            parse_sql_stmt("select foo, bar, qux from my_tbl").unwrap(),
+            SqlStmt::Select {
+                cols: vec![
+                    ResultExpr::Value(Expr::ColName("foo")),
+                    ResultExpr::Value(Expr::ColName("bar")),
+                    ResultExpr::Value(Expr::ColName("qux"))
+                ],
+                tbl: "my_tbl",
+                filter: None
+            }
+        )
+    }
+
+    #[test]
+    fn select_with_filter() {
+        assert_eq!(
+            parse_sql_stmt("select foo from bar where qux = 'my filter'").unwrap(),
+            SqlStmt::Select {
+                cols: vec![ResultExpr::Value(Expr::ColName("foo"))],
+                tbl: "bar",
+                filter: Some(BoolExpr::Equals {
+                    l: Expr::ColName("qux"),
+                    r: Expr::String("my filter")
+                })
+            }
+        )
+    }
 }
