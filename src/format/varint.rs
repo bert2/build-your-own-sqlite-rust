@@ -5,7 +5,7 @@ use std::iter;
 ///
 /// Returns (varint, bytes_read)
 pub fn parse_varint(stream: &[u8]) -> (i64, usize) {
-    read_usable_bytes(stream)
+    read_varint_bytes(stream)
         .enumerate()
         .map(|(i, byte)| {
             if i == 8 {
@@ -19,7 +19,7 @@ pub fn parse_varint(stream: &[u8]) -> (i64, usize) {
         })
 }
 
-fn read_usable_bytes(stream: &[u8]) -> impl Iterator<Item = u8> + '_ {
+fn read_varint_bytes(stream: &[u8]) -> impl Iterator<Item = u8> + '_ {
     fn is_last_byte(byte: u8) -> bool {
         (byte & 0b10000000) == 0
     }
