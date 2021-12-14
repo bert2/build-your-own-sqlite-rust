@@ -1,5 +1,5 @@
 use crate::format::varint::*;
-use anyhow::bail;
+use anyhow::{anyhow, bail};
 use std::{
     convert::{TryFrom, TryInto},
     fmt,
@@ -20,8 +20,8 @@ pub enum ColContent<'a> {
     Int48(&'a [u8; 6]),
     Int64(&'a [u8; 8]),
     Float64(&'a [u8; 8]),
-    False,
-    True,
+    Zero,
+    One,
     Blob(&'a [u8]),
     Text(&'a [u8]),
 }
@@ -66,8 +66,8 @@ impl<'a> ColContent<'a> {
             5 => (ColContent::Int48(stream[..6].try_into()?), 6),
             6 => (ColContent::Int64(stream[..8].try_into()?), 8),
             7 => (ColContent::Float64(stream[..8].try_into()?), 8),
-            8 => (ColContent::False, 0),
-            9 => (ColContent::True, 0),
+            8 => (ColContent::Zero, 0),
+            9 => (ColContent::One, 0),
             n if n >= 12 && n % 2 == 0 => {
                 let len = ((n - 12) / 2).try_into()?;
                 (ColContent::Blob(&stream[..len]), len)
@@ -85,7 +85,9 @@ impl<'a> fmt::Display for ColContent<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ColContent::Null => write!(f, "NULL"),
-            ColContent::Int8(_)
+            ColContent::Zero
+            | ColContent::One
+            | ColContent::Int8(_)
             | ColContent::Int16(_)
             | ColContent::Int24(_)
             | ColContent::Int32(_)
@@ -94,8 +96,6 @@ impl<'a> fmt::Display for ColContent<'a> {
                 write!(f, "{}", i64::try_from(self).unwrap())
             }
             ColContent::Float64(_) => write!(f, "{}", f64::try_from(self).unwrap()),
-            ColContent::False => write!(f, "FALSE"),
-            ColContent::True => write!(f, "TRUE"),
             ColContent::Blob(bytes) => {
                 for byte in *bytes {
                     write!(f, "{:02X} ", byte)?;
@@ -112,6 +112,8 @@ impl<'a> TryFrom<&ColContent<'a>> for i8 {
 
     fn try_from(value: &ColContent) -> Result<Self, Self::Error> {
         Ok(match value {
+            ColContent::Zero => 0,
+            ColContent::One => 1,
             ColContent::Int8(&bytes) => i8::from_be_bytes(bytes),
             _ => bail!("ColContent cannot be converted to i8: {:?}", value),
         })
@@ -123,9 +125,10 @@ impl<'a> TryFrom<&ColContent<'a>> for i16 {
 
     fn try_from(value: &ColContent) -> Result<Self, Self::Error> {
         Ok(match value {
-            ColContent::Int8(_) => i8::try_from(value)?.into(),
             ColContent::Int16(&bytes) => i16::from_be_bytes(bytes),
-            _ => bail!("ColContent cannot be converted to i16: {:?}", value),
+            _ => i8::try_from(value)
+                .map_err(|_| anyhow!("ColContent cannot be converted to i16: {:?}", value))?
+                .into(),
         })
     }
 }
@@ -135,10 +138,11 @@ impl<'a> TryFrom<&ColContent<'a>> for i32 {
 
     fn try_from(value: &ColContent) -> Result<Self, Self::Error> {
         Ok(match value {
-            ColContent::Int8(_) | ColContent::Int16(_) => i16::try_from(value)?.into(),
-            ColContent::Int24(&bytes) => i32_from_3_be_bytes(bytes),
             ColContent::Int32(&bytes) => i32::from_be_bytes(bytes),
-            _ => bail!("ColContent cannot be converted to i32: {:?}", value),
+            ColContent::Int24(&bytes) => i32_from_3_be_bytes(bytes),
+            _ => i16::try_from(value)
+                .map_err(|_| anyhow!("ColContent cannot be converted to i32: {:?}", value))?
+                .into(),
         })
     }
 }
@@ -148,13 +152,11 @@ impl<'a> TryFrom<&ColContent<'a>> for i64 {
 
     fn try_from(value: &ColContent) -> Result<Self, Self::Error> {
         Ok(match value {
-            ColContent::Int8(_)
-            | ColContent::Int16(_)
-            | ColContent::Int24(_)
-            | ColContent::Int32(_) => i32::try_from(value)?.into(),
-            ColContent::Int48(&bytes) => i64_from_6_be_bytes(bytes),
             ColContent::Int64(&bytes) => i64::from_be_bytes(bytes),
-            _ => bail!("ColContent cannot be converted to i64: {:?}", value),
+            ColContent::Int48(&bytes) => i64_from_6_be_bytes(bytes),
+            _ => i16::try_from(value)
+                .map_err(|_| anyhow!("ColContent cannot be converted to i64: {:?}", value))?
+                .into(),
         })
     }
 }

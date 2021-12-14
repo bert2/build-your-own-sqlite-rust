@@ -136,7 +136,6 @@ pub enum Value<'a> {
     Null,
     Int(i64),
     Float(f64),
-    Bool(bool),
     Bytes(&'a [u8]),
     String(&'a str),
 }
@@ -145,6 +144,8 @@ impl<'a> From<&ColContent<'a>> for Value<'a> {
     fn from(content: &ColContent<'a>) -> Self {
         match content {
             ColContent::Null => Value::Null,
+            ColContent::Zero => Value::Int(0),
+            ColContent::One => Value::Int(1),
             ColContent::Int8(_)
             | ColContent::Int16(_)
             | ColContent::Int24(_)
@@ -152,8 +153,6 @@ impl<'a> From<&ColContent<'a>> for Value<'a> {
             | ColContent::Int48(_)
             | ColContent::Int64(_) => Value::Int(i64::try_from(content).unwrap()),
             ColContent::Float64(_) => Value::Float(f64::try_from(content).unwrap()),
-            ColContent::False => Value::Bool(false),
-            ColContent::True => Value::Bool(true),
             ColContent::Blob(bs) => Value::Bytes(bs),
             ColContent::Text(_) => Value::String(<&str>::try_from(content).unwrap()),
         }
@@ -184,8 +183,8 @@ impl<'a> Eval<'a> for Expr<'a> {
 impl<'a> Eval<'a> for BoolExpr<'a> {
     fn eval(&self, c: &Cell<'a>, s: &Schema<'a>) -> Value<'a> {
         match self {
-            BoolExpr::Equals { l, r } => Value::Bool(l.eval(c, s) == r.eval(c, s)),
-            BoolExpr::NotEquals { l, r } => Value::Bool(l.eval(c, s) != r.eval(c, s)),
+            BoolExpr::Equals { l, r } => Value::Int((l.eval(c, s) == r.eval(c, s)) as i64),
+            BoolExpr::NotEquals { l, r } => Value::Int((l.eval(c, s) != r.eval(c, s)) as i64),
         }
     }
 }
@@ -215,10 +214,10 @@ fn select_cols(
         .iter()
         .filter(|cell| match &filter {
             Some(expr) => {
-                if let Value::Bool(b) = expr.eval(cell, &schema) {
-                    b
+                if let Value::Int(b) = expr.eval(cell, &schema) {
+                    b == 1
                 } else {
-                    panic!("omg")
+                    panic!("Boolean expression didn't return an int value")
                 }
             }
             None => true,
