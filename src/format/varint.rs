@@ -1,8 +1,5 @@
 use std::iter;
 
-const IS_FIRST_BIT_ZERO_MASK: u8 = 0b10000000;
-const LAST_SEVEN_BITS_MASK: u8 = 0b01111111;
-
 /// Parses SQLite's "varint" (short for variable-length integer) as mentioned here:
 /// [varint](https://www.sqlite.org/fileformat2.html#varint)
 ///
@@ -12,34 +9,32 @@ pub fn parse_varint(stream: &[u8]) -> (i64, usize) {
         .enumerate()
         .map(|(i, byte)| {
             if i == 8 {
-                (8, byte as i64)
+                (8, byte)
             } else {
-                (7, (byte & LAST_SEVEN_BITS_MASK) as i64)
+                (7, byte & 0b01111111)
             }
         })
         .fold((0, 0), |(varint, bytes_read), (used_bits, byte)| {
-            ((varint << used_bits) | byte, bytes_read + 1)
+            ((varint << used_bits) | i64::from(byte), bytes_read + 1)
         })
 }
 
 fn read_usable_bytes(stream: &[u8]) -> impl Iterator<Item = u8> + '_ {
-    fn has_no_cont_bit(byte: u8) -> bool {
-        (byte & IS_FIRST_BIT_ZERO_MASK) == 0
+    fn is_last_byte(byte: u8) -> bool {
+        (byte & 0b10000000) == 0
     }
 
     let mut i = 0;
-    let mut last_byte_found = false;
+    let mut done = false;
     iter::from_fn(move || {
-        if last_byte_found {
+        if done {
             return None;
         };
 
         let byte = stream[i];
-        if has_no_cont_bit(byte) {
-            last_byte_found = true;
-        }
-
+        done = is_last_byte(byte);
         i = i + 1;
+
         Some(byte)
     })
     .take(9)
