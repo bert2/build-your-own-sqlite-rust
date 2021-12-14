@@ -1,3 +1,5 @@
+use std::iter;
+
 const IS_FIRST_BIT_ZERO_MASK: u8 = 0b10000000;
 const LAST_SEVEN_BITS_MASK: u8 = 0b01111111;
 
@@ -6,41 +8,60 @@ const LAST_SEVEN_BITS_MASK: u8 = 0b01111111;
 ///
 /// Returns (varint, bytes_read)
 pub fn parse_varint(stream: &[u8]) -> (i64, usize) {
-    let usable_bytes = read_usable_bytes(stream);
-    let bytes_read = usable_bytes.len();
-    let varint = usable_bytes
-        .into_iter()
+    read_usable_bytes(stream)
         .enumerate()
-        .fold(0, |value, (i, usable_byte)| {
-            let usable_size = if i == 8 { 8 } else { 7 };
-            (value << usable_size) + i64::from(usable_value(usable_size, usable_byte))
-        });
-    (varint, bytes_read)
+        .map(|(i, byte)| {
+            if i == 8 {
+                (8, byte as i64)
+            } else {
+                (7, (byte & LAST_SEVEN_BITS_MASK) as i64)
+            }
+        })
+        .fold((0, 0), |(varint, bytes_read), (used_bits, byte)| {
+            ((varint << used_bits) | byte, bytes_read + 1)
+        })
 }
 
-/// Usable size is either 8 or 7
-fn usable_value(usable_size: u8, byte: u8) -> u8 {
-    if usable_size == 8 {
-        usable_size
-    } else {
-        byte & LAST_SEVEN_BITS_MASK
+fn read_usable_bytes(stream: &[u8]) -> impl Iterator<Item = u8> + '_ {
+    fn has_no_cont_bit(byte: u8) -> bool {
+        (byte & IS_FIRST_BIT_ZERO_MASK) == 0
     }
-}
 
-fn read_usable_bytes(stream: &[u8]) -> Vec<u8> {
-    let mut usable_bytes = vec![];
+    let mut i = 0;
+    let mut last_byte_found = false;
+    iter::from_fn(move || {
+        if last_byte_found {
+            return None;
+        };
 
-    for i in 0..8 {
         let byte = stream[i];
-        usable_bytes.push(byte);
-        if starts_with_zero(byte) {
-            break;
+        if has_no_cont_bit(byte) {
+            last_byte_found = true;
         }
-    }
 
-    usable_bytes
+        i = i + 1;
+        Some(byte)
+    })
+    .take(9)
 }
 
-fn starts_with_zero(byte: u8) -> bool {
-    (byte & IS_FIRST_BIT_ZERO_MASK) == 0
+#[cfg(test)]
+mod test {
+    use super::parse_varint;
+
+    #[test]
+    fn test() {
+        assert_eq!(parse_varint(&[0b00000000]), (0, 1));
+        assert_eq!(parse_varint(&[0b00000001]), (1, 1));
+        assert_eq!(parse_varint(&[0b01111111]), (127, 1));
+        assert_eq!(parse_varint(&[0b10000001, 0b00000000]), (128, 2));
+        assert_eq!(parse_varint(&[0b10000010, 0b00101100]), (300, 2));
+        assert_eq!(
+            parse_varint(&[
+                0b10111111, 0b11111111, 0b11111111, 0b11111111, 0b11111111, 0b11111111, 0b11111111,
+                0b11111111, 0b11111111
+            ]),
+            (9223372036854775807, 9)
+        );
+    }
 }
