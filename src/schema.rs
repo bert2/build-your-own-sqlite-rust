@@ -146,7 +146,7 @@ impl<'a> Cols<'a> {
     }
 
     pub fn is_int_pk(&self, col: &str) -> bool {
-        opt_contains(&self.int_pk, &col)
+        self.int_pk.contains_(&col)
     }
 
     pub fn index(&self, col: &str) -> usize {

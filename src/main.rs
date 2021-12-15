@@ -1,6 +1,7 @@
 use anyhow::{anyhow, bail, Result};
 use sqlite_starter_rust::{
-    format::{cell::*, page::*, record::*},
+    exec::*,
+    format::page::*,
     schema::*,
     str_sim::*,
     syntax::{ast::*, parser::*},
@@ -129,64 +130,6 @@ fn schema(db: &[u8]) -> Result<String> {
 fn count_rows(tbl: &str, db: &[u8]) -> Result<String> {
     let (_, page) = load_tbl(tbl, db)?;
     Ok(format!("{}", page.header.number_of_cells))
-}
-
-#[derive(Debug, PartialEq)]
-pub enum Value<'a> {
-    Null,
-    Int(i64),
-    Float(f64),
-    Bytes(&'a [u8]),
-    String(&'a str),
-}
-
-impl<'a> From<&ColContent<'a>> for Value<'a> {
-    fn from(content: &ColContent<'a>) -> Self {
-        match content {
-            ColContent::Null => Value::Null,
-            ColContent::Zero => Value::Int(0),
-            ColContent::One => Value::Int(1),
-            ColContent::Int8(_)
-            | ColContent::Int16(_)
-            | ColContent::Int24(_)
-            | ColContent::Int32(_)
-            | ColContent::Int48(_)
-            | ColContent::Int64(_) => Value::Int(i64::try_from(content).unwrap()),
-            ColContent::Float64(_) => Value::Float(f64::try_from(content).unwrap()),
-            ColContent::Blob(bs) => Value::Bytes(bs),
-            ColContent::Text(_) => Value::String(<&str>::try_from(content).unwrap()),
-        }
-    }
-}
-
-trait Eval<'a> {
-    fn eval(&self, c: &Cell<'a>, s: &Schema<'a>) -> Value<'a>;
-}
-
-impl<'a> Eval<'a> for Expr<'a> {
-    fn eval(&self, c: &Cell<'a>, s: &Schema<'a>) -> Value<'a> {
-        match self {
-            Expr::Null => Value::Null,
-            Expr::String(s) => Value::String(s),
-            Expr::Int(i) => Value::Int(*i),
-            Expr::ColName(col) => {
-                if s.cols().is_int_pk(col) {
-                    Value::Int(c.row_id)
-                } else {
-                    (&c.payload[s.cols().index(col)]).into()
-                }
-            }
-        }
-    }
-}
-
-impl<'a> Eval<'a> for BoolExpr<'a> {
-    fn eval(&self, c: &Cell<'a>, s: &Schema<'a>) -> Value<'a> {
-        match self {
-            BoolExpr::Equals { l, r } => Value::Int((l.eval(c, s) == r.eval(c, s)) as i64),
-            BoolExpr::NotEquals { l, r } => Value::Int((l.eval(c, s) != r.eval(c, s)) as i64),
-        }
-    }
 }
 
 fn select_cols(

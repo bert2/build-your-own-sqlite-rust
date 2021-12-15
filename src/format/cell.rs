@@ -1,4 +1,4 @@
-use crate::format::{record::*, varint::*};
+use crate::format::{record::*, varint};
 use anyhow::Result;
 use std::convert::TryInto;
 
@@ -13,11 +13,11 @@ impl<'a> Cell<'a> {
     pub fn parse(stream: &'a [u8]) -> Result<Self> {
         let mut offset = 0;
 
-        let (payload_size, bytes_read) = parse_varint(&stream);
+        let (payload_size, bytes_read) = varint::parse(&stream);
         let payload_size = payload_size.try_into()?;
         offset += bytes_read;
 
-        let (row_id, bytes_read) = parse_varint(&stream[offset..]);
+        let (row_id, bytes_read) = varint::parse(&stream[offset..]);
         offset += bytes_read;
 
         Ok(Cell {
