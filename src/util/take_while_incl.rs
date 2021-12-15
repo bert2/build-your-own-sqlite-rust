@@ -1,51 +1,51 @@
-// Code stolen from https://github.com/hdevalke/take-until
+// Code stolen and adapted from https://github.com/hdevalke/take-until
 
 use core::fmt;
 use core::iter::FusedIterator;
 
-/// TakeUntilExt is an extension trait for iterators.
-/// It adds the `take_until` method.
-pub trait TakeUntilExt<P>
+/// TakeWhileInclExt is an extension trait for iterators.
+/// It adds the `take_while_incl` method.
+pub trait TakeWhileInclExt<P>
 where
     Self: Sized,
 {
-    /// Takes items until the predicate is true,
-    /// including the item that made the predicate true.
-    fn take_until(self, predicate: P) -> TakeUntil<Self, P>;
+    /// Takes items while the predicate is true,
+    /// including the item that made the predicate false.
+    fn take_while_incl(self, predicate: P) -> TakeWhileIncl<Self, P>;
 }
 
-impl<I, P> TakeUntilExt<P> for I
+impl<I, P> TakeWhileInclExt<P> for I
 where
     I: Sized + Iterator,
     P: FnMut(&I::Item) -> bool,
 {
-    fn take_until(self, predicate: P) -> TakeUntil<Self, P> {
-        TakeUntil {
+    fn take_while_incl(self, predicate: P) -> TakeWhileIncl<Self, P> {
+        TakeWhileIncl {
             iter: self,
             flag: false,
             predicate,
         }
     }
 }
-/// TakeUntil is similar to the TakeWhile iterator,
-/// but takes items until the predicate is true,
-/// including the item that made the predicate true.
-pub struct TakeUntil<I, P> {
+/// TakeWhileIncl is similar to the TakeWhile iterator.
+/// It takes items while the predicate is true, but
+/// including the item that made the predicate false.
+pub struct TakeWhileIncl<I, P> {
     iter: I,
     flag: bool,
     predicate: P,
 }
 
-impl<I: fmt::Debug, P> fmt::Debug for TakeUntil<I, P> {
+impl<I: fmt::Debug, P> fmt::Debug for TakeWhileIncl<I, P> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("TakeUntil")
+        f.debug_struct("TakeWhileIncl")
             .field("iter", &self.iter)
             .field("flag", &self.flag)
             .finish()
     }
 }
 
-impl<I, P> Iterator for TakeUntil<I, P>
+impl<I, P> Iterator for TakeWhileIncl<I, P>
 where
     I: Iterator,
     P: FnMut(&I::Item) -> bool,
@@ -57,7 +57,7 @@ where
             None
         } else {
             self.iter.next().and_then(|x| {
-                if (self.predicate)(&x) {
+                if !(self.predicate)(&x) {
                     self.flag = true;
                 }
                 Some(x)
@@ -75,7 +75,7 @@ where
     }
 }
 
-impl<I, P> FusedIterator for TakeUntil<I, P>
+impl<I, P> FusedIterator for TakeWhileIncl<I, P>
 where
     I: FusedIterator,
     P: FnMut(&I::Item) -> bool,
@@ -88,7 +88,7 @@ mod tests {
     #[test]
     fn test_size_hint_zero() {
         let v: Vec<u8> = vec![0, 1, 2];
-        let mut iter = v.iter().take_until(|_| true);
+        let mut iter = v.iter().take_while_incl(|_| false);
         assert_eq!((0, Some(3)), iter.size_hint());
         iter.next();
         assert_eq!((0, Some(0)), iter.size_hint());
