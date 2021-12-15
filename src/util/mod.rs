@@ -1,5 +1,6 @@
 mod contains_;
 mod flip;
+pub mod str_sim;
 mod take_while_incl;
 
 pub use contains_::ContainsExt;

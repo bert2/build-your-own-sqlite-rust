@@ -3,8 +3,8 @@ use sqlite_starter_rust::{
     exec::*,
     format::page::*,
     schema::*,
-    str_sim::*,
     syntax::{ast::*, parser::*},
+    util::str_sim,
 };
 use std::{borrow::*, convert::*, env::args, fs::File, io::prelude::*};
 
@@ -145,7 +145,7 @@ fn select_cols(
             bail!(
                 "Unknown column '{}'. Did you mean '{}'?",
                 col,
-                most_similar(col, &schema.cols().names()).unwrap()
+                str_sim::most_similar(col, &schema.cols().names()).unwrap()
             )
         } else {
             Ok(())

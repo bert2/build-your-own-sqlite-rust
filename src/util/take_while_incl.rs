@@ -27,6 +27,7 @@ where
         }
     }
 }
+
 /// TakeWhileIncl is similar to the TakeWhile iterator.
 /// It takes items while the predicate is true, but
 /// including the item that made the predicate false.
@@ -85,12 +86,19 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
     #[test]
-    fn test_size_hint_zero() {
-        let v: Vec<u8> = vec![0, 1, 2];
-        let mut iter = v.iter().take_while_incl(|_| false);
-        assert_eq!((0, Some(3)), iter.size_hint());
-        iter.next();
-        assert_eq!((0, Some(0)), iter.size_hint());
+    fn test() {
+        let xs = vec![-2, -1, 0, 1, 2];
+        let mut it = xs.iter().take_while_incl(|&&x| x < 0);
+
+        assert_eq!((0, Some(5)), it.size_hint());
+
+        assert_eq!(Some(&-2), it.next());
+        assert_eq!(Some(&-1), it.next());
+        assert_eq!(Some(&0), it.next());
+        assert_eq!(None, it.next());
+
+        assert_eq!((0, Some(0)), it.size_hint());
     }
 }
