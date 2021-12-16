@@ -1,6 +1,6 @@
 use anyhow::{anyhow, bail, Result};
 use sqlite_starter_rust::{interpreter::exec, syntax::parse};
-use std::{env::args, fs::File, io::prelude::Read};
+use std::{env::args, fs::File, io::Read};
 
 fn main() -> Result<()> {
     let args = args().collect::<Vec<_>>();

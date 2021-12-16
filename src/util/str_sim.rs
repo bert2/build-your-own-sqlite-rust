@@ -8,8 +8,8 @@ pub fn similarity(a: &str, b: &str) -> f32 {
         return 1.;
     }
 
-    let max_len: f32 = max(a.len(), b.len()) as f32;
-    let min_len: f32 = min(a.len(), b.len()) as f32;
+    let max_len = max(a.len(), b.len()) as f32;
+    let min_len = min(a.len(), b.len()) as f32;
 
     let num_matches = a
         .chars()
@@ -59,14 +59,14 @@ mod test {
         }
 
         #[test]
-        fn is_higher_when_lens_are_closer() {
+        fn is_higher_when_lengths_are_closer() {
             assert!(similarity("foo", "foo") > similarity("foo", "fooo"));
             assert!(similarity("foo", "fooo") > similarity("foo", "foooo"));
             assert!(similarity("foo", "foooo") > similarity("foo", "fooooo"));
         }
 
         #[test]
-        fn prefers_matching_len_over_char_matches() {
+        fn prefers_matching_length_over_char_matches() {
             assert!(similarity("foo", "foA") > similarity("foo", "fooo"));
             assert!(similarity("foo", "foA") > similarity("fo", "fooo"));
         }

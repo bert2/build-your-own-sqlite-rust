@@ -154,7 +154,7 @@ impl<'a> TryFrom<&ColContent<'a>> for i64 {
         Ok(match value {
             ColContent::Int64(&bytes) => i64::from_be_bytes(bytes),
             ColContent::Int48(&bytes) => i64_from_6_be_bytes(bytes),
-            _ => i16::try_from(value)
+            _ => i32::try_from(value)
                 .map_err(|_| anyhow!("ColContent cannot be converted to i64: {:?}", value))?
                 .into(),
         })
@@ -176,10 +176,10 @@ impl<'a> TryFrom<&ColContent<'a>> for &'a str {
     type Error = anyhow::Error;
 
     fn try_from(value: &ColContent<'a>) -> Result<Self, Self::Error> {
-        match value {
-            ColContent::Text(bytes) => Ok(str::from_utf8(bytes)?),
+        Ok(match value {
+            ColContent::Text(bytes) => str::from_utf8(bytes)?,
             _ => bail!("ColContent cannot be converted to str: {:?}", value),
-        }
+        })
     }
 }
 
@@ -187,10 +187,10 @@ impl<'a> TryFrom<&ColContent<'a>> for Option<&'a str> {
     type Error = anyhow::Error;
 
     fn try_from(value: &ColContent<'a>) -> Result<Self, Self::Error> {
-        match value {
-            ColContent::Null => Ok(None),
-            _ => Ok(Some(<&str>::try_from(value)?)),
-        }
+        Ok(match value {
+            ColContent::Null => None,
+            _ => Some(<&str>::try_from(value)?),
+        })
     }
 }
 
