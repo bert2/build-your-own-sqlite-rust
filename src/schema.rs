@@ -1,6 +1,6 @@
 use crate::{
     format::{cell::*, db_header::*, page::*},
-    syntax::{ast::*, parser::*},
+    syntax::{ast::*, parse},
     util::*,
 };
 use anyhow::*;
@@ -96,10 +96,11 @@ impl<'a> Schema<'a> {
     }
 
     pub fn cols(&self) -> &Cols {
-        self.cols.as_ref().expect(&format!(
-            "Columns of object '{}' are unknown, because no CREATE statement was found in schema record",
-            self.name
-        ))
+        self.cols
+            .as_ref()
+            .unwrap_or_else(|| panic!(
+                "Columns of object '{}' are unknown, because no CREATE statement was found in schema record",
+                self.name))
     }
 
     pub fn is_table(self: &&Schema<'a>) -> bool {
@@ -121,7 +122,7 @@ impl<'a> Schema<'a> {
 
 impl<'a> Cols<'a> {
     pub fn parse(tbl_sql: &'a str) -> Result<Cols<'a>> {
-        let col_defs = match parse_sql_stmt(tbl_sql)? {
+        let col_defs = match parse::sql_stmt(tbl_sql)? {
             SqlStmt::CreateTbl { col_defs, .. } => col_defs,
             _ => bail!("Expected CREATE TABLE statement but got:\n{}", tbl_sql),
         };

@@ -19,16 +19,16 @@ pub trait Eval<'a> {
 }
 
 impl<'a> Eval<'a> for Expr<'a> {
-    fn eval(&self, c: &Cell<'a>, s: &Schema<'a>) -> Value<'a> {
+    fn eval(&self, cell: &Cell<'a>, schema: &Schema<'a>) -> Value<'a> {
         match self {
             Expr::Null => Value::Null,
             Expr::String(s) => Value::String(s),
             Expr::Int(i) => Value::Int(*i),
             Expr::ColName(col) => {
-                if s.cols().is_int_pk(col) {
-                    Value::Int(c.row_id)
+                if schema.cols().is_int_pk(col) {
+                    Value::Int(cell.row_id)
                 } else {
-                    (&c.payload[s.cols().index(col)]).into()
+                    (&cell.payload[schema.cols().index(col)]).into()
                 }
             }
         }
