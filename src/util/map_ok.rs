@@ -8,7 +8,7 @@ pub trait MapOkExt {
     }
 }
 
-impl<I: Iterator + Sized> MapOkExt for I {}
+impl<I> MapOkExt for I {}
 
 pub struct MapOk<I, F> {
     iter: I,
@@ -33,11 +33,13 @@ mod tests {
 
     #[test]
     fn test() {
-        let xs = vec![Ok(1), Err("oof"), Ok(3)];
-        let mut iter = xs.into_iter().map_ok(|x| x + 1);
+        let inv = |x: i32| 1. / x as f32;
 
-        assert_eq!(iter.next(), Some(Ok(2)));
+        let xs = vec![Ok(1), Err("oof"), Ok(3)];
+        let mut iter = xs.into_iter().map_ok(inv);
+
+        assert_eq!(iter.next(), Some(Ok(1.0)));
         assert_eq!(iter.next(), Some(Err("oof")));
-        assert_eq!(iter.next(), Some(Ok(4)));
+        assert_eq!(iter.next(), Some(Ok(1. / 3.)));
     }
 }

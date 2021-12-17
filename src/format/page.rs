@@ -1,4 +1,7 @@
-use crate::format::{cell::*, db_header::*, page_header::*};
+use crate::{
+    format::{cell::*, db_header::*, page_header::*},
+    util::{bind_map_ok::*, flatten_ok::*},
+};
 use anyhow::*;
 use std::convert::{TryFrom, TryInto};
 
@@ -36,24 +39,17 @@ impl<'a> Page<'a> {
         let cell_ptrs_offset =
             self.header.size() + if self.is_db_schema { DbHeader::SIZE } else { 0 };
 
-        let xs = self.data[cell_ptrs_offset..]
+        let pages = self.data[cell_ptrs_offset..]
             .chunks_exact(2)
             .take(self.header.number_of_cells.into())
             .map(|bytes| usize::from(u16::from_be_bytes(bytes.try_into().unwrap())))
             .map(|cell_pointer| IntrTblCell::parse(&self.data[cell_pointer..]))
-            .collect::<Result<Vec<_>>>()?;
+            .bind_map_ok(|cell| Page::parse(cell.child_page, page_size, db))
+            .bind_map_ok(|page| page.leaf_pages(page_size, db))
+            .flatten_ok()
+            .collect::<Result<_>>()?;
 
-        let pages = xs
-            .iter()
-            .map(|cell| Page::parse(cell.child_page, page_size, db))
-            .collect::<Result<Vec<_>>>()?;
-
-        let xs = pages
-            .into_iter()
-            .flat_map(|page| page.leaf_pages(page_size, db).unwrap())
-            .collect::<Vec<_>>();
-
-        Ok(xs)
+        Ok(pages)
     }
 
     pub fn cells(self) -> Result<Vec<LeafTblCell<'a>>> {
