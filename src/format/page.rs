@@ -1,8 +1,9 @@
 use crate::{
     format::{cell::*, db_header::*, page_header::*},
-    util::{bind_map_ok::*, flatten_ok::*},
+    util::BindMapOkExt,
 };
 use anyhow::*;
+use itertools::Itertools;
 use std::convert::{TryFrom, TryInto};
 
 #[derive(Debug)]

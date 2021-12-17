@@ -83,6 +83,7 @@ mod sql_stmt {
         util::str_sim,
     };
     use anyhow::{anyhow, bail, Result};
+    use itertools::Itertools;
     use std::convert::Into;
 
     pub fn run(stmt: SqlStmt, db: &[u8]) -> Result<String> {
@@ -112,8 +113,14 @@ mod sql_stmt {
     }
 
     fn count_rows(tbl: &str, db: &[u8]) -> Result<String> {
-        let (_, page) = load_tbl(tbl, db)?;
-        Ok(format!("{}", page.header.number_of_cells))
+        let db_schema = DbSchema::parse(db)?;
+        let page_size = db_schema.db_header.page_size.into();
+        let schema = db_schema
+            .table(tbl)
+            .ok_or(anyhow!("Table '{}' not found", tbl))?;
+        let rootpage = Page::parse(schema.rootpage, page_size, db)?;
+
+        Ok(format!("{}", rootpage.header.number_of_cells))
     }
 
     fn select_cols(
@@ -122,7 +129,12 @@ mod sql_stmt {
         filter: Option<BoolExpr>,
         db: &[u8],
     ) -> Result<String> {
-        let (schema, page) = load_tbl(tbl, db)?;
+        let db_schema = DbSchema::parse(db)?;
+        let page_size = db_schema.db_header.page_size.into();
+        let schema = db_schema
+            .table(tbl)
+            .ok_or(anyhow!("Table '{}' not found", tbl))?;
+        let rootpage = Page::parse(schema.rootpage, page_size, db)?;
 
         result_cols.iter().try_for_each(|col| {
             if !schema.cols().has(col) {
@@ -136,10 +148,12 @@ mod sql_stmt {
             }
         })?;
 
-        Ok(page
-            .cells()?
-            .iter()
-            .filter(|cell| match &filter {
+        Ok(rootpage
+            .leaf_pages(page_size, db)?
+            .into_iter()
+            .map(|p| p.cells())
+            .flatten_ok()
+            .filter_ok(|cell| match &filter {
                 Some(expr) => {
                     if let Value::Int(b) = expr.eval(cell, &schema) {
                         b == 1
@@ -149,7 +163,7 @@ mod sql_stmt {
                 }
                 None => true,
             })
-            .map(|cell| {
+            .map_ok(|cell| {
                 result_cols
                     .iter()
                     .map(|res_col| {
@@ -162,18 +176,7 @@ mod sql_stmt {
                     .collect::<Vec<_>>()
                     .join("|")
             })
-            .collect::<Vec<_>>()
+            .collect::<Result<Vec<_>>>()?
             .join("\n"))
-    }
-
-    fn load_tbl<'a>(tbl: &str, db: &'a [u8]) -> Result<(Schema<'a>, Page<'a>)> {
-        let db_schema = DbSchema::parse(db)?;
-        let page_size = db_schema.db_header.page_size.into();
-        let schema = db_schema
-            .table(tbl)
-            .ok_or(anyhow!("Table '{}' not found", tbl))?;
-        let page = Page::parse(schema.rootpage, page_size, db)?;
-
-        Ok((schema, page))
     }
 }

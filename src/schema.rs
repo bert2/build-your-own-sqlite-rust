@@ -4,6 +4,7 @@ use crate::{
     util::*,
 };
 use anyhow::*;
+use itertools::Itertools;
 use std::{collections::HashMap, convert::*};
 
 #[derive(Debug)]
@@ -33,15 +34,17 @@ impl<'a> DbSchema<'a> {
     pub fn parse(db: &'a [u8]) -> Result<DbSchema<'a>> {
         let db_header = DbHeader::parse(&db[..DbHeader::SIZE])?;
         let page_size = db_header.page_size.into();
-        let page = Page::parse_schema(page_size, db)?;
-        let page_content_offset: usize = page.header.start_of_content_area.into();
+        let rootpage = Page::parse_schema(page_size, db)?;
+        let page_content_offset: usize = rootpage.header.start_of_content_area.into();
 
         Ok(DbSchema {
             db_header,
-            objs: page
-                .cells()?
-                .iter()
-                .map(Schema::parse)
+            objs: rootpage
+                .leaf_pages(page_size, db)?
+                .into_iter()
+                .map(|p| p.cells())
+                .flatten_ok()
+                .bind_map_ok(|c| Schema::parse(&c))
                 .collect::<Result<Vec<_>>>()?,
             size: page_size - page_content_offset - DbHeader::SIZE,
         })
