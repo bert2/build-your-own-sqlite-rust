@@ -15,11 +15,11 @@ pub enum Value<'a> {
 }
 
 pub trait Eval<'a> {
-    fn eval(&self, c: &Cell<'a>, s: &Schema<'a>) -> Value<'a>;
+    fn eval(&self, c: &LeafTblCell<'a>, s: &Schema<'a>) -> Value<'a>;
 }
 
 impl<'a> Eval<'a> for Expr<'a> {
-    fn eval(&self, cell: &Cell<'a>, schema: &Schema<'a>) -> Value<'a> {
+    fn eval(&self, cell: &LeafTblCell<'a>, schema: &Schema<'a>) -> Value<'a> {
         match self {
             Expr::Null => Value::Null,
             Expr::String(s) => Value::String(s),
@@ -36,7 +36,7 @@ impl<'a> Eval<'a> for Expr<'a> {
 }
 
 impl<'a> Eval<'a> for BoolExpr<'a> {
-    fn eval(&self, c: &Cell<'a>, s: &Schema<'a>) -> Value<'a> {
+    fn eval(&self, c: &LeafTblCell<'a>, s: &Schema<'a>) -> Value<'a> {
         match self {
             BoolExpr::Equals { l, r } => Value::Int((l.eval(c, s) == r.eval(c, s)) as i64),
             BoolExpr::NotEquals { l, r } => Value::Int((l.eval(c, s) != r.eval(c, s)) as i64),

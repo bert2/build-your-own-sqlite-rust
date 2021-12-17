@@ -5,20 +5,12 @@ use core::iter::FusedIterator;
 
 /// TakeWhileInclExt is an extension trait for iterators.
 /// It adds the `take_while_incl` method.
-pub trait TakeWhileInclExt<P>
+pub trait TakeWhileInclExt<P>: Iterator + Sized
 where
-    Self: Sized,
+    P: FnMut(&Self::Item) -> bool,
 {
     /// Takes items while the predicate is true,
     /// including the item that made the predicate false.
-    fn take_while_incl(self, predicate: P) -> TakeWhileIncl<Self, P>;
-}
-
-impl<I, P> TakeWhileInclExt<P> for I
-where
-    I: Sized + Iterator,
-    P: FnMut(&I::Item) -> bool,
-{
     fn take_while_incl(self, predicate: P) -> TakeWhileIncl<Self, P> {
         TakeWhileIncl {
             iter: self,
@@ -26,6 +18,13 @@ where
             predicate,
         }
     }
+}
+
+impl<I, P> TakeWhileInclExt<P> for I
+where
+    I: Sized + Iterator,
+    P: FnMut(&I::Item) -> bool,
+{
 }
 
 /// TakeWhileIncl is similar to the TakeWhile iterator.

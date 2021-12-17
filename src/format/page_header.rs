@@ -1,7 +1,7 @@
 use anyhow::{bail, Result};
 use std::convert::TryInto;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum PageType {
     InteriorIndex = 2,
     InteriorTable = 5,
