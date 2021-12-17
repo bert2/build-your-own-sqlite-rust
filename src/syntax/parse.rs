@@ -132,10 +132,18 @@ mod parsers {
     }
 
     fn identifier(i: &str) -> R<&str> {
+        alt((delimited_identifier, regular_identifier))(i)
+    }
+
+    fn regular_identifier(i: &str) -> R<&str> {
         recognize(pair(
             alt((alpha1, tag("_"))),
             many0(alt((alphanumeric1, tag("_")))),
         ))(i)
+    }
+
+    fn delimited_identifier(i: &str) -> R<&str> {
+        delimited(char('"'), is_not("\""), char('"'))(i)
     }
 
     fn str_lit(i: &str) -> R<&str> {
@@ -174,6 +182,18 @@ mod test {
                     ResultExpr::Value(Expr::ColName("qux"))
                 ],
                 tbl: "my_tbl",
+                filter: None
+            }
+        )
+    }
+
+    #[test]
+    fn select_delimited_table_name() {
+        assert_eq!(
+            sql_stmt("select foo from \"my table!\"").unwrap(),
+            SqlStmt::Select {
+                cols: vec![ResultExpr::Value(Expr::ColName("foo"))],
+                tbl: "my table!",
                 filter: None
             }
         )
