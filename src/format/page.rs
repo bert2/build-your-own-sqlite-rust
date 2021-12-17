@@ -3,7 +3,6 @@ use crate::{
     util::*,
 };
 use anyhow::*;
-use itertools::Itertools;
 use std::{
     convert::{TryFrom, TryInto},
     iter,
@@ -49,27 +48,27 @@ impl<'a> Page<'a> {
                 .chunks_exact(2)
                 .take(self.header.number_of_cells.into())
                 .map(|bytes| usize::from(u16::from_be_bytes(bytes.try_into().unwrap())))
-                .map(move |cell_pointer| IntrTblCell::parse(&self.data[cell_pointer..]))
-                .bind_map_ok(move |cell| Page::parse(cell.child_page, page_size, db))
-                .map_ok(move |page| {
+                .map(move |cell_ptr| IntrTblCell::parse(&self.data[cell_ptr..]))
+                .map_ok_and_then(move |cell| Page::parse(cell.child_page, page_size, db))
+                .flat_map_ok_and_then(move |page| {
                     Box::new(page.leaf_pages(page_size, db))
                         as Box<dyn Iterator<Item = Result<Page<'a>>>>
-                })
-                .flatten_ok()
-                .map(Result::flatten_);
+                });
 
             (None, Some(leaves))
         };
 
+        // nifty way to return two different `Iterator`s from the same function
+        // see: https://stackoverflow.com/a/52064434/1025555
         iter_self
             .into_iter()
             .flatten()
             .chain(iter_leaves.into_iter().flatten())
     }
 
-    pub fn cells(self) -> Result<Vec<LeafTblCell<'a>>> {
+    pub fn cells(self) -> impl Iterator<Item = Result<LeafTblCell<'a>>> {
         if self.header.page_type != PageType::LeafTable {
-            bail!("Cannot get cells of {:?}", self.header.page_type);
+            panic!("Cannot get cells of {:?}", self.header.page_type);
         }
 
         let cell_ptrs_offset =
@@ -79,7 +78,6 @@ impl<'a> Page<'a> {
             .chunks_exact(2)
             .take(self.header.number_of_cells.into())
             .map(|bytes| usize::from(u16::from_be_bytes(bytes.try_into().unwrap())))
-            .map(|cell_pointer| LeafTblCell::parse(&self.data[cell_pointer..]))
-            .collect::<Result<_>>()
+            .map(move |cell_ptr| LeafTblCell::parse(&self.data[cell_ptr..]))
     }
 }

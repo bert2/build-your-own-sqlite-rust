@@ -4,7 +4,6 @@ use crate::{
     util::*,
 };
 use anyhow::*;
-use itertools::Itertools;
 use std::{collections::HashMap, convert::*};
 
 #[derive(Debug)]
@@ -41,9 +40,8 @@ impl<'a> DbSchema<'a> {
             db_header,
             objs: rootpage
                 .leaf_pages(page_size, db)
-                .bind_map_ok(|p| p.cells())
-                .flatten_ok()
-                .bind_map_ok(|c| Schema::parse(&c))
+                .flat_map_ok_and_then(Page::cells)
+                .map_ok_and_then(Schema::parse)
                 .collect::<Result<Vec<_>>>()?,
             size: page_size - page_content_offset - DbHeader::SIZE,
         })
@@ -74,7 +72,7 @@ impl<'a> DbSchema<'a> {
 }
 
 impl<'a> Schema<'a> {
-    pub fn parse(record: &LeafTblCell<'a>) -> Result<Self> {
+    pub fn parse(record: LeafTblCell<'a>) -> Result<Self> {
         let type_ = <&str>::try_from(&record.payload[0])
             .map_err(|e| anyhow!("Unexpected value in column 'type': {}", e))?;
         let name = <&str>::try_from(&record.payload[1])

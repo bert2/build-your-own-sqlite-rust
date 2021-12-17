@@ -150,8 +150,7 @@ mod sql_stmt {
 
         Ok(rootpage
             .leaf_pages(page_size, db)
-            .bind_map_ok(|p| p.cells())
-            .flatten_ok()
+            .flat_map_ok_and_then(Page::cells)
             .filter_ok(|cell| match &filter {
                 Some(expr) => {
                     if let Value::Int(b) = expr.eval(cell, &schema) {
