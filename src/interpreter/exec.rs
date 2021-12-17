@@ -103,7 +103,7 @@ mod sql_stmt {
         match stmt {
             SqlStmt::Select { cols, tbl, filter } => {
                 if is_count_expr(&cols) {
-                    count_rows(tbl, db)
+                    count_rows(tbl, filter, db)
                 } else {
                     select_cols(&get_col_names(&cols)?, tbl, filter, db)
                 }
@@ -112,15 +112,26 @@ mod sql_stmt {
         }
     }
 
-    fn count_rows(tbl: &str, db: &[u8]) -> Result<String> {
+    fn count_rows(tbl: &str, filter: Option<BoolExpr>, db: &[u8]) -> Result<String> {
         let db_schema = DbSchema::parse(db)?;
         let page_size = db_schema.db_header.page_size.into();
         let schema = db_schema
             .table(tbl)
             .ok_or(anyhow!("Table '{}' not found", tbl))?;
-        let rootpage = Page::parse(schema.rootpage, page_size, db)?;
 
-        Ok(format!("{}", rootpage.header.number_of_cells))
+        let count = Page::parse(schema.rootpage, page_size, db)?
+            .leaf_pages(page_size, db)
+            .flat_map_ok_and_then(Page::cells)
+            .filter_ok(|cell| match &filter {
+                Some(expr) => match expr.eval(cell, &schema) {
+                    Value::Int(b) => b == 1,
+                    _ => panic!("BoolExpr didn't return a Value::Int"),
+                },
+                None => true,
+            })
+            .fold_ok(0, |count, _| count + 1)?;
+
+        Ok(format!("{}", count))
     }
 
     fn select_cols(
@@ -152,13 +163,10 @@ mod sql_stmt {
             .leaf_pages(page_size, db)
             .flat_map_ok_and_then(Page::cells)
             .filter_ok(|cell| match &filter {
-                Some(expr) => {
-                    if let Value::Int(b) = expr.eval(cell, &schema) {
-                        b == 1
-                    } else {
-                        panic!("Boolean expression didn't return an int value")
-                    }
-                }
+                Some(expr) => match expr.eval(cell, &schema) {
+                    Value::Int(b) => b == 1,
+                    _ => panic!("BoolExpr didn't return a Value::Int"),
+                },
                 None => true,
             })
             .map_ok(|cell| {
