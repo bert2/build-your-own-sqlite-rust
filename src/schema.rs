@@ -40,9 +40,8 @@ impl<'a> DbSchema<'a> {
         Ok(DbSchema {
             db_header,
             objs: rootpage
-                .leaf_pages(page_size, db)?
-                .into_iter()
-                .map(|p| p.cells())
+                .leaf_pages(page_size, db)
+                .bind_map_ok(|p| p.cells())
                 .flatten_ok()
                 .bind_map_ok(|c| Schema::parse(&c))
                 .collect::<Result<Vec<_>>>()?,

@@ -80,7 +80,7 @@ mod sql_stmt {
         interpreter::eval::{Eval, Value},
         schema::*,
         syntax::ast::*,
-        util::str_sim,
+        util::*,
     };
     use anyhow::{anyhow, bail, Result};
     use itertools::Itertools;
@@ -149,9 +149,8 @@ mod sql_stmt {
         })?;
 
         Ok(rootpage
-            .leaf_pages(page_size, db)?
-            .into_iter()
-            .map(|p| p.cells())
+            .leaf_pages(page_size, db)
+            .bind_map_ok(|p| p.cells())
             .flatten_ok()
             .filter_ok(|cell| match &filter {
                 Some(expr) => {

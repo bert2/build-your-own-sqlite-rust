@@ -4,7 +4,10 @@ use crate::{
 };
 use anyhow::*;
 use itertools::Itertools;
-use std::convert::{TryFrom, TryInto};
+use std::{
+    convert::{TryFrom, TryInto},
+    iter,
+};
 
 #[derive(Debug)]
 pub struct Page<'a> {
@@ -32,25 +35,36 @@ impl<'a> Page<'a> {
         })
     }
 
-    pub fn leaf_pages(self, page_size: usize, db: &'a [u8]) -> Result<Vec<Page<'a>>> {
-        if self.header.page_type == PageType::LeafTable {
-            return Ok(vec![self]);
-        }
+    pub fn leaf_pages(
+        self,
+        page_size: usize,
+        db: &'a [u8],
+    ) -> impl Iterator<Item = Result<Page<'a>>> {
+        let (iter_self, iter_leaves) = if self.header.page_type == PageType::LeafTable {
+            (Some(iter::once(Ok(self))), None)
+        } else {
+            let cell_ptrs_offset =
+                self.header.size() + if self.is_db_schema { DbHeader::SIZE } else { 0 };
+            let leaves = self.data[cell_ptrs_offset..]
+                .chunks_exact(2)
+                .take(self.header.number_of_cells.into())
+                .map(|bytes| usize::from(u16::from_be_bytes(bytes.try_into().unwrap())))
+                .map(move |cell_pointer| IntrTblCell::parse(&self.data[cell_pointer..]))
+                .bind_map_ok(move |cell| Page::parse(cell.child_page, page_size, db))
+                .map_ok(move |page| {
+                    Box::new(page.leaf_pages(page_size, db))
+                        as Box<dyn Iterator<Item = Result<Page<'a>>>>
+                })
+                .flatten_ok()
+                .map(|r| r.and_then(|r| r));
 
-        let cell_ptrs_offset =
-            self.header.size() + if self.is_db_schema { DbHeader::SIZE } else { 0 };
+            (None, Some(leaves))
+        };
 
-        let pages = self.data[cell_ptrs_offset..]
-            .chunks_exact(2)
-            .take(self.header.number_of_cells.into())
-            .map(|bytes| usize::from(u16::from_be_bytes(bytes.try_into().unwrap())))
-            .map(|cell_pointer| IntrTblCell::parse(&self.data[cell_pointer..]))
-            .bind_map_ok(|cell| Page::parse(cell.child_page, page_size, db))
-            .bind_map_ok(|page| page.leaf_pages(page_size, db))
-            .flatten_ok()
-            .collect::<Result<_>>()?;
-
-        Ok(pages)
+        iter_self
+            .into_iter()
+            .flatten()
+            .chain(iter_leaves.into_iter().flatten())
     }
 
     pub fn cells(self) -> Result<Vec<LeafTblCell<'a>>> {
