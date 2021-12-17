@@ -1,6 +1,6 @@
 use crate::{
     format::{cell::*, db_header::*, page_header::*},
-    util::BindMapOkExt,
+    util::*,
 };
 use anyhow::*;
 use itertools::Itertools;
@@ -56,7 +56,7 @@ impl<'a> Page<'a> {
                         as Box<dyn Iterator<Item = Result<Page<'a>>>>
                 })
                 .flatten_ok()
-                .map(|r| r.and_then(|r| r));
+                .map(Result::flatten_);
 
             (None, Some(leaves))
         };
