@@ -83,7 +83,10 @@ impl<'a> Schema<'a> {
             .map_err(|e| anyhow!("Unexpected value in column 'rootpage': {}", e))?;
         let sql = Option::<&str>::try_from(&record.payload[4])
             .map_err(|e| anyhow!("Unexpected value in column 'sql': {}", e))?;
-        let cols = sql.map(Cols::parse).transpose()?;
+        let cols = sql
+            .filter(|_| type_ == "table")
+            .map(Cols::parse)
+            .transpose()?;
 
         Ok(Schema {
             type_,
