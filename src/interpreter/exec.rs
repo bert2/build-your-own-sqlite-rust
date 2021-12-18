@@ -117,7 +117,7 @@ mod sql_stmt {
         let page_size = db_schema.db_header.page_size.into();
         let schema = db_schema
             .table(tbl)
-            .ok_or(anyhow!("Table '{}' not found", tbl))?;
+            .ok_or_else(|| anyhow!("Table '{}' not found", tbl))?;
 
         let count = Page::parse(schema.rootpage, page_size, db)?
             .leaf_pages(page_size, db)
@@ -144,7 +144,7 @@ mod sql_stmt {
         let page_size = db_schema.db_header.page_size.into();
         let schema = db_schema
             .table(tbl)
-            .ok_or(anyhow!("Table '{}' not found", tbl))?;
+            .ok_or_else(|| anyhow!("Table '{}' not found", tbl))?;
         let rootpage = Page::parse(schema.rootpage, page_size, db)?;
 
         result_cols.iter().try_for_each(|col| {
@@ -152,7 +152,7 @@ mod sql_stmt {
                 bail!(
                     "Unknown column '{}'. Did you mean '{}'?",
                     col,
-                    str_sim::most_similar(col, &schema.cols().names()).unwrap()
+                    str_sim::most_similar(col, schema.cols().names()).unwrap()
                 )
             } else {
                 Ok(())

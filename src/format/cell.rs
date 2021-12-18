@@ -13,7 +13,7 @@ impl<'a> LeafTblCell<'a> {
     pub fn parse(stream: &'a [u8]) -> Result<Self> {
         let mut offset = 0;
 
-        let (payload_size, bytes_read) = varint::parse(&stream);
+        let (payload_size, bytes_read) = varint::parse(stream);
         let payload_size = payload_size.try_into()?;
         offset += bytes_read;
 

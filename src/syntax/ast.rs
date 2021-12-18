@@ -52,10 +52,7 @@ pub enum BoolExpr<'a> {
 
 impl<'a> ColDef<'a> {
     pub fn is_int_pk(self: &&ColDef<'a>) -> bool {
-        match self {
-            ColDef::IntPk(_) => true,
-            _ => false,
-        }
+        matches!(self, ColDef::IntPk(_))
     }
 
     pub fn name(&self) -> &'a str {

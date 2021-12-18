@@ -4,7 +4,7 @@ use std::{
 };
 
 pub fn similarity(a: &str, b: &str) -> f32 {
-    if a == "" && b == "" {
+    if a.is_empty() && b.is_empty() {
         return 1.;
     }
 
@@ -26,10 +26,12 @@ pub fn similarity(a: &str, b: &str) -> f32 {
     match_rate * match_weight + len_sim * len_weight
 }
 
-pub fn most_similar<'a>(target: &str, candidates: &[&'a str]) -> Option<&'a str> {
+pub fn most_similar<'a>(
+    target: &str,
+    candidates: impl Iterator<Item = &'a str>,
+) -> Option<&'a str> {
     candidates
-        .iter()
-        .map(|&c| (c, similarity(&target, c)))
+        .map(|c| (c, similarity(target, c)))
         .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
         .map(|max| max.0)
 }
@@ -96,13 +98,13 @@ mod test {
 
         #[test]
         fn finds_closest_match() {
-            assert_eq!(most_similar("if", &vec!["id", "name", "color"]), Some("id"));
+            assert_eq!(most_similar("if", vec!["id", "name", "color"]), Some("id"));
             assert_eq!(
-                most_similar("mame", &vec!["id", "name", "color"]),
+                most_similar("mame", vec!["id", "name", "color"]),
                 Some("name")
             );
             assert_eq!(
-                most_similar("rotor", &vec!["id", "name", "color"]),
+                most_similar("rotor", vec!["id", "name", "color"]),
                 Some("color")
             );
         }

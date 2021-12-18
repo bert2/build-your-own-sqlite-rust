@@ -56,11 +56,11 @@ where
         if self.flag {
             None
         } else {
-            self.iter.next().and_then(|x| {
+            self.iter.next().map(|x| {
                 if !(self.predicate)(&x) {
                     self.flag = true;
                 }
-                Some(x)
+                x
             })
         }
     }

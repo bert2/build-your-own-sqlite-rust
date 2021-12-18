@@ -50,10 +50,7 @@ impl PageHeader {
     }
 
     pub fn is_leaf(&self) -> bool {
-        match self.page_type {
-            PageType::LeafTable | PageType::LeafIndex => true,
-            _ => false,
-        }
+        matches!(self.page_type, PageType::LeafTable | PageType::LeafIndex)
     }
 
     pub fn size(&self) -> usize {

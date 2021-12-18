@@ -138,8 +138,8 @@ impl<'a> Cols<'a> {
         })
     }
 
-    pub fn names(&self) -> Vec<&str> {
-        self.name_to_idx.keys().map(|&c| c).collect::<Vec<_>>()
+    pub fn names(&self) -> impl Iterator<Item = &str> {
+        self.name_to_idx.keys().copied()
     }
 
     pub fn has(&self, col: &str) -> bool {
