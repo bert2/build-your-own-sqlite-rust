@@ -1,5 +1,5 @@
 use crate::format::varint;
-use anyhow::{anyhow, bail};
+use anyhow::{anyhow, bail, Result};
 use std::{
     convert::{TryFrom, TryInto},
     fmt,
@@ -27,7 +27,7 @@ pub enum ColContent<'a> {
 }
 
 impl<'a> Record<'a> {
-    pub fn parse(stream: &'a [u8]) -> anyhow::Result<Self> {
+    pub fn parse(stream: &'a [u8]) -> Result<Self> {
         let (header_size, mut header_offset) = varint::parse(stream);
         let header_size = header_size.try_into()?;
         let mut content_offset = header_size;
@@ -56,7 +56,7 @@ impl<'a> Index<usize> for Record<'a> {
 }
 
 impl<'a> ColContent<'a> {
-    pub fn parse(serial_type: i64, stream: &[u8]) -> anyhow::Result<(ColContent, usize)> {
+    pub fn parse(serial_type: i64, stream: &[u8]) -> Result<(ColContent, usize)> {
         Ok(match serial_type {
             0 => (ColContent::Null, 0),
             1 => (ColContent::Int8(stream[..1].try_into()?), 1),
