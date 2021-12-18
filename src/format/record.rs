@@ -114,7 +114,7 @@ impl<'a> TryFrom<&ColContent<'a>> for i8 {
         Ok(match value {
             ColContent::Zero => 0,
             ColContent::One => 1,
-            ColContent::Int8(&bytes) => i8::from_be_bytes(bytes),
+            ColContent::Int8(&bytes) => Self::from_be_bytes(bytes),
             _ => bail!("ColContent cannot be converted to i8: {:?}", value),
         })
     }
@@ -125,7 +125,7 @@ impl<'a> TryFrom<&ColContent<'a>> for i16 {
 
     fn try_from(value: &ColContent) -> Result<Self, Self::Error> {
         Ok(match value {
-            ColContent::Int16(&bytes) => i16::from_be_bytes(bytes),
+            ColContent::Int16(&bytes) => Self::from_be_bytes(bytes),
             _ => i8::try_from(value)
                 .map_err(|_| anyhow!("ColContent cannot be converted to i16: {:?}", value))?
                 .into(),
@@ -138,7 +138,7 @@ impl<'a> TryFrom<&ColContent<'a>> for i32 {
 
     fn try_from(value: &ColContent) -> Result<Self, Self::Error> {
         Ok(match value {
-            ColContent::Int32(&bytes) => i32::from_be_bytes(bytes),
+            ColContent::Int32(&bytes) => Self::from_be_bytes(bytes),
             ColContent::Int24(&bytes) => i32_from_3_be_bytes(bytes),
             _ => i16::try_from(value)
                 .map_err(|_| anyhow!("ColContent cannot be converted to i32: {:?}", value))?
@@ -152,7 +152,7 @@ impl<'a> TryFrom<&ColContent<'a>> for i64 {
 
     fn try_from(value: &ColContent) -> Result<Self, Self::Error> {
         Ok(match value {
-            ColContent::Int64(&bytes) => i64::from_be_bytes(bytes),
+            ColContent::Int64(&bytes) => Self::from_be_bytes(bytes),
             ColContent::Int48(&bytes) => i64_from_6_be_bytes(bytes),
             _ => i32::try_from(value)
                 .map_err(|_| anyhow!("ColContent cannot be converted to i64: {:?}", value))?
@@ -166,7 +166,7 @@ impl<'a> TryFrom<&ColContent<'a>> for f64 {
 
     fn try_from(value: &ColContent) -> Result<Self, Self::Error> {
         Ok(match value {
-            ColContent::Float64(&bytes) => f64::from_be_bytes(bytes),
+            ColContent::Float64(&bytes) => Self::from_be_bytes(bytes),
             _ => bail!("ColContent cannot be converted to f64: {:?}", value),
         })
     }

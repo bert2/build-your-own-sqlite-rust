@@ -98,13 +98,16 @@ mod test {
 
         #[test]
         fn finds_closest_match() {
-            assert_eq!(most_similar("if", vec!["id", "name", "color"]), Some("id"));
             assert_eq!(
-                most_similar("mame", vec!["id", "name", "color"]),
+                most_similar("if", vec!["id", "name", "color"].into_iter()),
+                Some("id")
+            );
+            assert_eq!(
+                most_similar("mame", vec!["id", "name", "color"].into_iter()),
                 Some("name")
             );
             assert_eq!(
-                most_similar("rotor", vec!["id", "name", "color"]),
+                most_similar("rotor", vec!["id", "name", "color"].into_iter()),
                 Some("color")
             );
         }

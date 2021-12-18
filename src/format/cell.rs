@@ -38,6 +38,6 @@ impl<'a> IntrTblCell {
     pub fn parse(stream: &'a [u8]) -> Result<Self> {
         let child_page = i32::from_be_bytes(stream[..4].try_into()?);
         let (row_id, _) = varint::parse(&stream[4..]);
-        Ok(IntrTblCell { child_page, row_id })
+        Ok(Self { child_page, row_id })
     }
 }

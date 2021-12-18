@@ -123,7 +123,7 @@ mod sql_stmt {
             .leaf_pages(page_size, db)
             .flat_map_ok_and_then(Page::cells)
             .filter_ok(|cell| match &filter {
-                Some(expr) => match expr.eval(cell, &schema) {
+                Some(expr) => match expr.eval(cell, &schema).unwrap() {
                     Value::Int(b) => b == 1,
                     _ => panic!("BoolExpr didn't return a Value::Int"),
                 },
@@ -163,7 +163,7 @@ mod sql_stmt {
             .leaf_pages(page_size, db)
             .flat_map_ok_and_then(Page::cells)
             .filter_ok(|cell| match &filter {
-                Some(expr) => match expr.eval(cell, &schema) {
+                Some(expr) => match expr.eval(cell, &schema).unwrap() {
                     Value::Int(b) => b == 1,
                     _ => panic!("BoolExpr didn't return a Value::Int"),
                 },

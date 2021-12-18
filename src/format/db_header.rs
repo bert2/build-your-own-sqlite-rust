@@ -38,7 +38,7 @@ impl DbHeader {
     pub const SIZE: usize = 100;
 
     pub fn parse(stream: &[u8]) -> Result<Self> {
-        Ok(DbHeader {
+        Ok(Self {
             header_string: String::from_utf8_lossy(&stream[..16]).to_string(),
             page_size: u16::from_be_bytes(stream[16..18].try_into()?),
             write_format: stream[18],

@@ -122,7 +122,9 @@ impl<'a> Schema<'a> {
 
 impl<'a> Cols<'a> {
     pub fn parse(tbl_sql: &'a str) -> Result<Cols<'a>> {
-        let col_defs = match parse::sql_stmt(tbl_sql)? {
+        let sql = parse::sql_stmt(tbl_sql)
+            .map_err(|e| anyhow!("Failed to parse CREATE TABLE statement: {}", e))?;
+        let col_defs = match sql {
             SqlStmt::CreateTbl { col_defs, .. } => col_defs,
             _ => bail!("Expected CREATE TABLE statement but got:\n{}", tbl_sql),
         };

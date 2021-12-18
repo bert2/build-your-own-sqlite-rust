@@ -3,6 +3,7 @@ use crate::{
     schema::*,
     syntax::ast::*,
 };
+use anyhow::Result;
 use std::convert::*;
 
 #[derive(Debug, PartialEq)]
@@ -15,12 +16,12 @@ pub enum Value<'a> {
 }
 
 pub trait Eval<'a> {
-    fn eval(&self, c: &LeafTblCell<'a>, s: &Schema<'a>) -> Value<'a>;
+    fn eval(&self, c: &LeafTblCell<'a>, s: &Schema<'a>) -> Result<Value<'a>>;
 }
 
 impl<'a> Eval<'a> for Expr<'a> {
-    fn eval(&self, cell: &LeafTblCell<'a>, schema: &Schema<'a>) -> Value<'a> {
-        match self {
+    fn eval(&self, cell: &LeafTblCell<'a>, schema: &Schema<'a>) -> Result<Value<'a>> {
+        Ok(match self {
             Expr::Null => Value::Null,
             Expr::String(s) => Value::String(s),
             Expr::Int(i) => Value::Int(*i),
@@ -28,25 +29,27 @@ impl<'a> Eval<'a> for Expr<'a> {
                 if schema.cols().is_int_pk(col) {
                     Value::Int(cell.row_id)
                 } else {
-                    (&cell.payload[schema.cols().index(col)]).into()
+                    Value::try_from(&cell.payload[schema.cols().index(col)])?
                 }
             }
-        }
+        })
     }
 }
 
 impl<'a> Eval<'a> for BoolExpr<'a> {
-    fn eval(&self, c: &LeafTblCell<'a>, s: &Schema<'a>) -> Value<'a> {
-        match self {
-            BoolExpr::Equals { l, r } => Value::Int((l.eval(c, s) == r.eval(c, s)) as i64),
-            BoolExpr::NotEquals { l, r } => Value::Int((l.eval(c, s) != r.eval(c, s)) as i64),
-        }
+    fn eval(&self, c: &LeafTblCell<'a>, s: &Schema<'a>) -> Result<Value<'a>> {
+        Ok(match self {
+            BoolExpr::Equals { l, r } => Value::Int((l.eval(c, s)? == r.eval(c, s)?) as i64),
+            BoolExpr::NotEquals { l, r } => Value::Int((l.eval(c, s)? != r.eval(c, s)?) as i64),
+        })
     }
 }
 
-impl<'a> From<&ColContent<'a>> for Value<'a> {
-    fn from(content: &ColContent<'a>) -> Self {
-        match content {
+impl<'a> TryFrom<&ColContent<'a>> for Value<'a> {
+    type Error = anyhow::Error;
+
+    fn try_from(content: &ColContent<'a>) -> Result<Self, Self::Error> {
+        Ok(match content {
             ColContent::Null => Value::Null,
             ColContent::Zero => Value::Int(0),
             ColContent::One => Value::Int(1),
@@ -55,10 +58,10 @@ impl<'a> From<&ColContent<'a>> for Value<'a> {
             | ColContent::Int24(_)
             | ColContent::Int32(_)
             | ColContent::Int48(_)
-            | ColContent::Int64(_) => Value::Int(i64::try_from(content).unwrap()),
-            ColContent::Float64(_) => Value::Float(f64::try_from(content).unwrap()),
+            | ColContent::Int64(_) => Value::Int(i64::try_from(content)?),
+            ColContent::Float64(_) => Value::Float(f64::try_from(content)?),
             ColContent::Blob(bs) => Value::Bytes(bs),
-            ColContent::Text(_) => Value::String(<&str>::try_from(content).unwrap()),
-        }
+            ColContent::Text(_) => Value::String(<&str>::try_from(content)?),
+        })
     }
 }

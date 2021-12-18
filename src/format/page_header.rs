@@ -39,7 +39,7 @@ impl PageHeader {
             _ => None,
         };
 
-        Ok(PageHeader {
+        Ok(Self {
             page_type,
             first_free_block_start,
             number_of_cells,
@@ -49,7 +49,7 @@ impl PageHeader {
         })
     }
 
-    pub fn is_leaf(&self) -> bool {
+    pub const fn is_leaf(&self) -> bool {
         matches!(self.page_type, PageType::LeafTable | PageType::LeafIndex)
     }
 
