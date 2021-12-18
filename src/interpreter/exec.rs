@@ -3,7 +3,7 @@ use anyhow::Result;
 
 pub fn sqlite(sql: Sqlite, db: &[u8]) -> Result<String> {
     match sql {
-        Sqlite::DotCmd(cmd) => dot_cmd::run(cmd, db),
+        Sqlite::DotCmd(cmd) => dot_cmd::run(&cmd, db),
         Sqlite::SqlStmt(stmt) => sql_stmt::run(stmt, db),
     }
 }
@@ -13,7 +13,7 @@ mod dot_cmd {
     use anyhow::Result;
     use std::{borrow::Cow, convert::Into};
 
-    pub fn run(cmd: DotCmd, db: &[u8]) -> Result<String> {
+    pub fn run(cmd: &DotCmd, db: &[u8]) -> Result<String> {
         match cmd {
             DotCmd::DbInfo => dbinfo(db),
             DotCmd::Tables => tables(db),
@@ -61,9 +61,10 @@ mod dot_cmd {
 
     fn schema(db: &[u8]) -> Result<String> {
         fn get_sql<'a>(schema: &Schema<'a>) -> Cow<'a, str> {
-            schema.sql.map(Cow::from).unwrap_or_else(|| {
-                format!("[Object '{}' has no CREATE statement]", schema.name).into()
-            })
+            schema.sql.map_or_else(
+                || format!("[Object '{}' has no CREATE statement]", schema.name).into(),
+                Cow::from,
+            )
         }
 
         Ok(DbSchema::parse(db)?
@@ -103,16 +104,16 @@ mod sql_stmt {
         match stmt {
             SqlStmt::Select { cols, tbl, filter } => {
                 if is_count_expr(&cols) {
-                    count_rows(tbl, filter, db)
+                    count_rows(tbl, &filter, db)
                 } else {
-                    select_cols(&get_col_names(&cols)?, tbl, filter, db)
+                    select_cols(&get_col_names(&cols)?, tbl, &filter, db)
                 }
             }
-            _ => bail!("Not implemented: {:#?}", stmt),
+            SqlStmt::CreateTbl { .. } => bail!("Not implemented: {:#?}", stmt),
         }
     }
 
-    fn count_rows(tbl: &str, filter: Option<BoolExpr>, db: &[u8]) -> Result<String> {
+    fn count_rows(tbl: &str, filter: &Option<BoolExpr>, db: &[u8]) -> Result<String> {
         let db_schema = DbSchema::parse(db)?;
         let page_size = db_schema.db_header.page_size.into();
         let schema = db_schema
@@ -137,7 +138,7 @@ mod sql_stmt {
     fn select_cols(
         result_cols: &[&str],
         tbl: &str,
-        filter: Option<BoolExpr>,
+        filter: &Option<BoolExpr>,
         db: &[u8],
     ) -> Result<String> {
         let db_schema = DbSchema::parse(db)?;
@@ -148,15 +149,15 @@ mod sql_stmt {
         let rootpage = Page::parse(schema.rootpage, page_size, db)?;
 
         result_cols.iter().try_for_each(|col| {
-            if !schema.cols().has(col) {
-                bail!(
-                    "Unknown column '{}'. Did you mean '{}'?",
-                    col,
-                    str_sim::most_similar(col, schema.cols().names()).unwrap()
-                )
-            } else {
-                Ok(())
+            if schema.cols().has(col) {
+                return Ok(());
             }
+
+            bail!(
+                "Unknown column '{}'. Did you mean '{}'?",
+                col,
+                str_sim::most_similar(col, schema.cols().names()).unwrap()
+            )
         })?;
 
         Ok(rootpage

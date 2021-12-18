@@ -41,7 +41,7 @@ impl<'a> DbSchema<'a> {
             objs: rootpage
                 .leaf_pages(page_size, db)
                 .flat_map_ok_and_then(Page::cells)
-                .map_ok_and_then(Schema::parse)
+                .map_ok_and_then(|p| Schema::parse(&p))
                 .collect::<Result<Vec<_>>>()?,
             size: page_size - page_content_offset - DbHeader::SIZE,
         })
@@ -72,7 +72,7 @@ impl<'a> DbSchema<'a> {
 }
 
 impl<'a> Schema<'a> {
-    pub fn parse(record: LeafTblCell<'a>) -> Result<Self> {
+    pub fn parse(record: &LeafTblCell<'a>) -> Result<Self> {
         let type_ = <&str>::try_from(&record.payload[0])
             .map_err(|e| anyhow!("Unexpected value in column 'type': {}", e))?;
         let name = <&str>::try_from(&record.payload[1])
@@ -126,7 +126,9 @@ impl<'a> Cols<'a> {
             .map_err(|e| anyhow!("Failed to parse CREATE TABLE statement: {}", e))?;
         let col_defs = match sql {
             SqlStmt::CreateTbl { col_defs, .. } => col_defs,
-            _ => bail!("Expected CREATE TABLE statement but got:\n{}", tbl_sql),
+            SqlStmt::Select { .. } => {
+                bail!("Expected CREATE TABLE statement but got:\n{}", tbl_sql)
+            }
         };
 
         Ok(Cols {

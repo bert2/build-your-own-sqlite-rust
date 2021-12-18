@@ -67,9 +67,11 @@ impl<'a> Page<'a> {
     }
 
     pub fn cells(self) -> impl Iterator<Item = Result<LeafTblCell<'a>>> {
-        if self.header.page_type != PageType::LeafTable {
-            panic!("Cannot get cells of {:?}", self.header.page_type);
-        }
+        assert!(
+            self.header.page_type == PageType::LeafTable,
+            "Cannot get cells of {:?}",
+            self.header.page_type
+        );
 
         let cell_ptrs_offset =
             self.header.size() + if self.is_db_schema { DbHeader::SIZE } else { 0 };

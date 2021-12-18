@@ -57,8 +57,7 @@ impl<'a> ColDef<'a> {
 
     pub const fn name(&self) -> &'a str {
         match self {
-            ColDef::IntPk(n) => *n,
-            ColDef::Col(n) => *n,
+            ColDef::IntPk(n) | ColDef::Col(n) => *n,
         }
     }
 }
