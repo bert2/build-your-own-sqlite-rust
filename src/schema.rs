@@ -41,7 +41,7 @@ impl<'a> DbSchema<'a> {
             objs: rootpage
                 .leaf_pages(page_size, db)
                 .flat_map_ok_and_then(Page::cells)
-                .map_ok_and_then(|p| Schema::parse(&p))
+                .map_ok_and_then(|c| Schema::parse(&c))
                 .collect::<Result<Vec<_>>>()?,
             size: page_size - page_content_offset - DbHeader::SIZE,
         })
@@ -129,9 +129,7 @@ impl<'a> Cols<'a> {
             .map_err(|e| anyhow!("Failed to parse CREATE TABLE statement: {}", e))?;
         let col_defs = match sql {
             SqlStmt::CreateTbl { col_defs, .. } => col_defs,
-            SqlStmt::Select { .. } => {
-                bail!("Expected CREATE TABLE statement but got:\n{}", tbl_sql)
-            }
+            _ => bail!("Expected CREATE TABLE statement but got:\n{}", tbl_sql),
         };
 
         Ok(Cols {

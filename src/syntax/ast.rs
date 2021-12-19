@@ -20,8 +20,13 @@ pub enum ColDef<'a> {
 #[derive(Debug, PartialEq)]
 pub enum SqlStmt<'a> {
     CreateTbl {
-        tbl_name: &'a str,
+        name: &'a str,
         col_defs: Vec<ColDef<'a>>,
+    },
+    CreateIdx {
+        name: &'a str,
+        target_tbl: &'a str,
+        target_col: &'a str,
     },
     Select {
         cols: Vec<ResultExpr<'a>>,

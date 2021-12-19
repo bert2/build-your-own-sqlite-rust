@@ -45,21 +45,42 @@ mod parsers {
     }
 
     pub fn sql_stmt(i: &str) -> R<SqlStmt> {
-        terminated(alt((create_tbl_stmt, select_stmt)), eof)(i)
+        terminated(alt((create_idx_stmt, create_tbl_stmt, select_stmt)), eof)(i)
+    }
+
+    fn create_idx_stmt(i: &str) -> R<SqlStmt> {
+        tuple((
+            skip(preceded_ws0(tag_no_case("CREATE"))),
+            skip(preceded_ws1(tag_no_case("INDEX"))),
+            skip(opt(preceded_ws1(if_not_exists_clause))),
+            preceded_ws1(identifier),
+            skip(preceded_ws1(tag_no_case("ON"))),
+            preceded_ws1(identifier),
+            skip(delimited_ws0(char('('))),
+            identifier,
+            skip(terminated_ws0(char(')'))),
+        ))
+        .map(|x| SqlStmt::CreateIdx {
+            name: x.3,
+            target_tbl: x.5,
+            target_col: x.7,
+        })
+        .parse(i)
     }
 
     fn create_tbl_stmt(i: &str) -> R<SqlStmt> {
         tuple((
             skip(preceded_ws0(tag_no_case("CREATE"))),
-            skip(delimited_ws1(tag_no_case("TABLE"))),
-            identifier,
+            skip(preceded_ws1(tag_no_case("TABLE"))),
+            skip(opt(preceded_ws1(if_not_exists_clause))),
+            preceded_ws1(identifier),
             skip(delimited_ws0(char('('))),
             comma_separated_list1(create_tbl_coldef),
             skip(terminated_ws0(char(')'))),
         ))
         .map(|x| SqlStmt::CreateTbl {
-            tbl_name: x.2,
-            col_defs: x.4,
+            name: x.3,
+            col_defs: x.5,
         })
         .parse(i)
     }
@@ -70,14 +91,30 @@ mod parsers {
             skip(preceded_ws1(tag_no_case("INTEGER"))),
             skip(preceded_ws1(tag_no_case("PRIMARY"))),
             skip(preceded_ws1(tag_no_case("KEY"))),
-            skip(take_while(|c| c != ',' && c != ')')),
+            skip_col_constraints,
         ))
         .map(|x| ColDef::IntPk(x.0));
 
-        let other_col =
-            terminated(identifier, take_while(|c| c != ',' && c != ')')).map(ColDef::Col);
+        let other_col = terminated(identifier, skip_col_constraints).map(ColDef::Col);
 
         alt((int_pk_col, other_col))(i)
+    }
+
+    fn skip_col_constraints(i: &str) -> R<()> {
+        skip(alt((
+            pair(multispace0, peek(is_a(",)"))),
+            pair(multispace1, take_while(|c| c != ',' && c != ')')),
+        )))
+        .parse(i)
+    }
+
+    fn if_not_exists_clause(i: &str) -> R<()> {
+        skip(tuple((
+            tag_no_case("IF"),
+            preceded_ws1(tag_no_case("NOT")),
+            preceded_ws1(tag_no_case("EXISTS")),
+        )))
+        .parse(i)
     }
 
     fn select_stmt(i: &str) -> R<SqlStmt> {
@@ -157,60 +194,174 @@ mod parsers {
 
 #[cfg(test)]
 mod test {
-    use super::*;
+    mod create_tbl {
+        use super::super::*;
 
-    #[test]
-    fn select_single_col() {
-        assert_eq!(
-            sql_stmt("select foo from bar").unwrap(),
-            SqlStmt::Select {
-                cols: vec![ResultExpr::Value(Expr::ColName("foo"))],
-                tbl: "bar",
-                filter: None
-            }
-        )
+        #[test]
+        fn basic() {
+            assert_eq!(
+                sql_stmt("create table foo (bar, qux)").unwrap(),
+                SqlStmt::CreateTbl {
+                    name: "foo",
+                    col_defs: vec![ColDef::Col("bar"), ColDef::Col("qux")],
+                }
+            )
+        }
+
+        #[test]
+        fn ignores_types_and_constraints_on_cols() {
+            assert_eq!(
+                sql_stmt("create table foo (bar text default 'bar', qux blob unique not null)")
+                    .unwrap(),
+                SqlStmt::CreateTbl {
+                    name: "foo",
+                    col_defs: vec![ColDef::Col("bar"), ColDef::Col("qux")],
+                }
+            )
+        }
+
+        #[test]
+        fn captures_int_pk_constraint() {
+            assert_eq!(
+                sql_stmt("create table foo (bar integer primary key, qux)").unwrap(),
+                SqlStmt::CreateTbl {
+                    name: "foo",
+                    col_defs: vec![ColDef::IntPk("bar"), ColDef::Col("qux")],
+                }
+            )
+        }
+
+        #[test]
+        fn ignores_exists_clause() {
+            assert_eq!(
+                sql_stmt("create table if not exists foo (bar, qux)").unwrap(),
+                SqlStmt::CreateTbl {
+                    name: "foo",
+                    col_defs: vec![ColDef::Col("bar"), ColDef::Col("qux")],
+                }
+            )
+        }
+
+        #[test]
+        fn delimited_identifiers() {
+            assert_eq!(
+                sql_stmt("create table \"my tbl!\" (\"my col!\")").unwrap(),
+                SqlStmt::CreateTbl {
+                    name: "my tbl!",
+                    col_defs: vec![ColDef::Col("my col!")],
+                }
+            )
+        }
     }
 
-    #[test]
-    fn select_multiple_cols() {
-        assert_eq!(
-            sql_stmt("select foo, bar, qux from my_tbl").unwrap(),
-            SqlStmt::Select {
-                cols: vec![
-                    ResultExpr::Value(Expr::ColName("foo")),
-                    ResultExpr::Value(Expr::ColName("bar")),
-                    ResultExpr::Value(Expr::ColName("qux"))
-                ],
-                tbl: "my_tbl",
-                filter: None
-            }
-        )
+    mod create_idx {
+        use super::super::*;
+
+        #[test]
+        fn basic() {
+            assert_eq!(
+                sql_stmt("create index foo on bar (qux)").unwrap(),
+                SqlStmt::CreateIdx {
+                    name: "foo",
+                    target_tbl: "bar",
+                    target_col: "qux",
+                }
+            )
+        }
+
+        #[test]
+        fn ignores_exists_clause() {
+            assert_eq!(
+                sql_stmt("create index if not exists foo on bar (qux)").unwrap(),
+                SqlStmt::CreateIdx {
+                    name: "foo",
+                    target_tbl: "bar",
+                    target_col: "qux",
+                }
+            )
+        }
+
+        #[test]
+        fn delimited_identifiers() {
+            assert_eq!(
+                sql_stmt("create index \"my idx!\" on \"my tbl!\" (\"my col!\")").unwrap(),
+                SqlStmt::CreateIdx {
+                    name: "my idx!",
+                    target_tbl: "my tbl!",
+                    target_col: "my col!",
+                }
+            )
+        }
     }
 
-    #[test]
-    fn select_delimited_table_name() {
-        assert_eq!(
-            sql_stmt("select foo from \"my table!\"").unwrap(),
-            SqlStmt::Select {
-                cols: vec![ResultExpr::Value(Expr::ColName("foo"))],
-                tbl: "my table!",
-                filter: None
-            }
-        )
-    }
+    mod select {
+        use super::super::*;
 
-    #[test]
-    fn select_with_filter() {
-        assert_eq!(
-            sql_stmt("select foo from bar where qux = 'my filter'").unwrap(),
-            SqlStmt::Select {
-                cols: vec![ResultExpr::Value(Expr::ColName("foo"))],
-                tbl: "bar",
-                filter: Some(BoolExpr::Equals {
-                    l: Expr::ColName("qux"),
-                    r: Expr::String("my filter")
-                })
-            }
-        )
+        #[test]
+        fn single_col() {
+            assert_eq!(
+                sql_stmt("select foo from bar").unwrap(),
+                SqlStmt::Select {
+                    cols: vec![ResultExpr::Value(Expr::ColName("foo"))],
+                    tbl: "bar",
+                    filter: None
+                }
+            )
+        }
+
+        #[test]
+        fn count() {
+            assert_eq!(
+                sql_stmt("select count(*) from bar").unwrap(),
+                SqlStmt::Select {
+                    cols: vec![ResultExpr::Count],
+                    tbl: "bar",
+                    filter: None
+                }
+            )
+        }
+
+        #[test]
+        fn multiple_cols() {
+            assert_eq!(
+                sql_stmt("select foo, bar, qux from my_tbl").unwrap(),
+                SqlStmt::Select {
+                    cols: vec![
+                        ResultExpr::Value(Expr::ColName("foo")),
+                        ResultExpr::Value(Expr::ColName("bar")),
+                        ResultExpr::Value(Expr::ColName("qux"))
+                    ],
+                    tbl: "my_tbl",
+                    filter: None
+                }
+            )
+        }
+
+        #[test]
+        fn delimited_table_name() {
+            assert_eq!(
+                sql_stmt("select foo from \"my tbl!\"").unwrap(),
+                SqlStmt::Select {
+                    cols: vec![ResultExpr::Value(Expr::ColName("foo"))],
+                    tbl: "my tbl!",
+                    filter: None
+                }
+            )
+        }
+
+        #[test]
+        fn with_filter() {
+            assert_eq!(
+                sql_stmt("select foo from bar where qux = 'my filter'").unwrap(),
+                SqlStmt::Select {
+                    cols: vec![ResultExpr::Value(Expr::ColName("foo"))],
+                    tbl: "bar",
+                    filter: Some(BoolExpr::Equals {
+                        l: Expr::ColName("qux"),
+                        r: Expr::String("my filter")
+                    })
+                }
+            )
+        }
     }
 }

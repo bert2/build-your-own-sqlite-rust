@@ -109,7 +109,7 @@ mod sql_stmt {
                     select_cols(&get_col_names(&cols)?, tbl, &filter, db)
                 }
             }
-            SqlStmt::CreateTbl { .. } => bail!("Not implemented: {:#?}", stmt),
+            _ => bail!("Not implemented: {:#?}", stmt),
         }
     }
 
