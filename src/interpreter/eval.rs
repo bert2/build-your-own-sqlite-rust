@@ -29,7 +29,7 @@ impl<'a> Eval<'a> for Expr<'a> {
                 if schema.cols().is_int_pk(col) {
                     Value::Int(cell.row_id)
                 } else {
-                    Value::try_from(&cell.payload[schema.cols().index(col)])?
+                    Value::try_from(&cell.payload[schema.cols().record_pos(col)])?
                 }
             }
         })

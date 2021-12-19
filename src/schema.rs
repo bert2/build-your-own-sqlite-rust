@@ -4,7 +4,7 @@ use crate::{
     util::*,
 };
 use anyhow::*;
-use std::{collections::HashMap, convert::*};
+use std::{collections::HashMap, convert::*, iter::once};
 
 #[derive(Debug)]
 pub struct DbSchema<'a> {
@@ -24,9 +24,12 @@ pub struct Schema<'a> {
 }
 
 #[derive(Debug)]
-pub struct Cols<'a> {
-    pub int_pk: Option<&'a str>,
-    pub name_to_idx: HashMap<&'a str, usize>,
+pub enum Cols<'a> {
+    TblCols {
+        int_pk: Option<&'a str>,
+        name_to_pos: HashMap<&'a str, usize>,
+    },
+    IdxCol(&'a str),
 }
 
 impl<'a> DbSchema<'a> {
@@ -124,38 +127,53 @@ impl<'a> Schema<'a> {
 }
 
 impl<'a> Cols<'a> {
-    pub fn parse(tbl_sql: &'a str) -> Result<Cols<'a>> {
-        let sql = parse::sql_stmt(tbl_sql)
-            .map_err(|e| anyhow!("Failed to parse CREATE TABLE statement: {}", e))?;
-        let col_defs = match sql {
-            SqlStmt::CreateTbl { col_defs, .. } => col_defs,
-            _ => bail!("Expected CREATE TABLE statement but got:\n{}", tbl_sql),
-        };
+    pub fn parse(create_sql: &'a str) -> Result<Cols<'a>> {
+        let sql = parse::sql_stmt(create_sql)
+            .map_err(|e| anyhow!("Failed to parse CREATE statement: {}", e))?;
 
-        Ok(Cols {
-            int_pk: col_defs.iter().find(ColDef::is_int_pk).map(ColDef::name),
-            name_to_idx: col_defs
-                .iter()
-                .map(ColDef::name)
-                .enumerate()
-                .map(flip)
-                .collect::<HashMap<_, _>>(),
+        Ok(match sql {
+            SqlStmt::CreateTbl { col_defs, .. } => Self::TblCols {
+                int_pk: col_defs.iter().find(ColDef::is_int_pk).map(ColDef::name),
+                name_to_pos: col_defs
+                    .iter()
+                    .map(ColDef::name)
+                    .enumerate()
+                    .map(flip)
+                    .collect::<HashMap<_, _>>(),
+            },
+            SqlStmt::CreateIdx { target_col, .. } => Self::IdxCol(target_col),
+            _ => bail!("Expected CREATE statement but got:\n{}", create_sql),
         })
     }
 
     pub fn names(&self) -> impl Iterator<Item = &str> {
-        self.name_to_idx.keys().copied()
+        match self {
+            Self::TblCols { name_to_pos, .. } => IterEither::left(name_to_pos.keys().copied()),
+            Self::IdxCol(col) => IterEither::right(once(*col)),
+        }
     }
 
     pub fn has(&self, col: &str) -> bool {
-        self.name_to_idx.contains_key(col)
+        match self {
+            Self::TblCols { name_to_pos, .. } => name_to_pos.contains_key(col),
+            Self::IdxCol(c) => col == *c,
+        }
     }
 
     pub fn is_int_pk(&self, col: &str) -> bool {
-        self.int_pk.contains_(&col)
+        matches!(
+            self,
+            Self::TblCols {
+                int_pk: Some(c),
+                ..
+            } if *c == col
+        )
     }
 
-    pub fn index(&self, col: &str) -> usize {
-        self.name_to_idx[col]
+    pub fn record_pos(&self, col: &str) -> usize {
+        match self {
+            Self::TblCols { name_to_pos, .. } => name_to_pos[col],
+            Self::IdxCol(_) => panic!("Cannot get record position of index column {}", col),
+        }
     }
 }

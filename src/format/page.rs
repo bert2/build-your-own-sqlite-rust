@@ -39,11 +39,12 @@ impl<'a> Page<'a> {
         page_size: usize,
         db: &'a [u8],
     ) -> impl Iterator<Item = Result<Page<'a>>> {
-        let (iter_self, iter_leaves) = if self.header.page_type == PageType::LeafTable {
-            (Some(iter::once(Ok(self))), None)
+        if self.header.page_type == PageType::LeafTable {
+            IterEither::left(iter::once(Ok(self)))
         } else {
             let cell_ptrs_offset =
                 self.header.size() + if self.is_db_schema { DbHeader::SIZE } else { 0 };
+
             let leaves = self.data[cell_ptrs_offset..]
                 .chunks_exact(2)
                 .take(self.header.number_of_cells.into())
@@ -55,15 +56,8 @@ impl<'a> Page<'a> {
                         as Box<dyn Iterator<Item = Result<Page<'a>>>>
                 });
 
-            (None, Some(leaves))
-        };
-
-        // nifty way to return two different `Iterator`s from the same function
-        // see: https://stackoverflow.com/a/52064434/1025555
-        iter_self
-            .into_iter()
-            .flatten()
-            .chain(iter_leaves.into_iter().flatten())
+            IterEither::right(leaves)
+        }
     }
 
     pub fn cells(self) -> impl Iterator<Item = Result<LeafTblCell<'a>>> {

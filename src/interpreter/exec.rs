@@ -177,7 +177,7 @@ mod sql_stmt {
                         if schema.cols().is_int_pk(res_col) {
                             cell.row_id.to_string()
                         } else {
-                            format!("{}", cell.payload[schema.cols().index(res_col)])
+                            format!("{}", cell.payload[schema.cols().record_pos(res_col)])
                         }
                     })
                     .collect::<Vec<_>>()
