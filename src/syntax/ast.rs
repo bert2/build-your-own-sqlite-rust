@@ -66,3 +66,45 @@ impl<'a> ColDef<'a> {
         }
     }
 }
+
+impl<'a> Expr<'a> {
+    pub fn as_col_name(&self) -> Option<&str> {
+        match self {
+            Expr::ColName(c) => Some(c),
+            _ => None,
+        }
+    }
+}
+
+impl<'a> BoolExpr<'a> {
+    pub fn referenced_cols(&self) -> impl Iterator<Item = &str> {
+        match self {
+            BoolExpr::Equals { l, r } | BoolExpr::NotEquals { l, r } => l
+                .as_col_name()
+                .into_iter()
+                .chain(r.as_col_name().into_iter()),
+        }
+    }
+
+    pub fn index_searchable_col(&self) -> Option<&str> {
+        match self {
+            BoolExpr::Equals {
+                l: Expr::ColName(c),
+                r: other,
+            }
+            | BoolExpr::Equals {
+                l: other,
+                r: Expr::ColName(c),
+            }
+            | BoolExpr::NotEquals {
+                l: Expr::ColName(c),
+                r: other,
+            }
+            | BoolExpr::NotEquals {
+                l: other,
+                r: Expr::ColName(c),
+            } if !matches!(other, Expr::ColName(_)) => Some(c),
+            _ => None,
+        }
+    }
+}

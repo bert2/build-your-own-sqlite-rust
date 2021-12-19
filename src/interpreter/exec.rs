@@ -148,17 +148,21 @@ mod sql_stmt {
             .ok_or_else(|| anyhow!("Table '{}' not found", tbl))?;
         let rootpage = Page::parse(schema.rootpage, page_size, db)?;
 
-        result_cols.iter().try_for_each(|col| {
-            if schema.cols().has(col) {
-                return Ok(());
-            }
+        filter
+            .iter()
+            .flat_map(BoolExpr::referenced_cols)
+            .chain(result_cols.iter().copied())
+            .try_for_each(|col| {
+                if schema.cols().has(col) {
+                    return Ok(());
+                }
 
-            bail!(
-                "Unknown column '{}'. Did you mean '{}'?",
-                col,
-                str_sim::most_similar(col, schema.cols().names()).unwrap()
-            )
-        })?;
+                bail!(
+                    "Unknown column '{}'. Did you mean '{}'?",
+                    col,
+                    str_sim::most_similar(col, schema.cols().names()).unwrap()
+                )
+            })?;
 
         Ok(rootpage
             .leaf_pages(page_size, db)

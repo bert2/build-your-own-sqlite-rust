@@ -26,11 +26,12 @@ pub fn similarity(a: &str, b: &str) -> f32 {
     match_rate * match_weight + len_sim * len_weight
 }
 
-pub fn most_similar<'a>(
-    target: &str,
-    candidates: impl Iterator<Item = &'a str>,
-) -> Option<&'a str> {
+pub fn most_similar<'a, I>(target: &str, candidates: I) -> Option<&'a str>
+where
+    I: IntoIterator<Item = &'a str>,
+{
     candidates
+        .into_iter()
         .map(|c| (c, similarity(target, c)))
         .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
         .map(|max| max.0)

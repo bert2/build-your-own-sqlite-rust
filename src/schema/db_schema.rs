@@ -51,6 +51,11 @@ impl<'a> DbSchema<'a> {
         self.tables().find(|t| t.name == name)
     }
 
+    pub fn index(&self, tbl: &str, col: &str) -> Option<&ObjSchema<'a>> {
+        self.indexes()
+            .find(|s| s.tbl_name == tbl && s.cols().has(col))
+    }
+
     pub fn has_index(&self, tbl: &str, col: &str) -> bool {
         self.indexes()
             .any(|s| s.tbl_name == tbl && s.cols().has(col))
