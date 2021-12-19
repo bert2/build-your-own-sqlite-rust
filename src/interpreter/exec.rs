@@ -60,7 +60,7 @@ mod dot_cmd {
     }
 
     fn schema(db: &[u8]) -> Result<String> {
-        fn get_sql<'a>(schema: &Schema<'a>) -> Cow<'a, str> {
+        fn get_sql<'a>(schema: &ObjSchema<'a>) -> Cow<'a, str> {
             schema.sql.map_or_else(
                 || format!("[Object '{}' has no CREATE statement]", schema.name).into(),
                 Cow::from,
