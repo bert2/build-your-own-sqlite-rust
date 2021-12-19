@@ -164,6 +164,11 @@ mod sql_stmt {
                 )
             })?;
 
+        let _idx_schema = filter
+            .as_ref()
+            .and_then(BoolExpr::index_searchable_col)
+            .and_then(|c| db_schema.index(tbl, c));
+
         Ok(rootpage
             .leaf_pages(page_size, db)
             .flat_map_ok_and_then(Page::cells)
