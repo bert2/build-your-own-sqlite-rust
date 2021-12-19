@@ -31,13 +31,6 @@ impl<'a> DbSchema<'a> {
         })
     }
 
-    pub fn table(self, name: &str) -> Option<ObjSchema<'a>> {
-        self.objs
-            .into_iter()
-            .filter(|s| s.is_table())
-            .find(|t| t.name == name)
-    }
-
     pub fn tables(&self) -> impl Iterator<Item = &ObjSchema<'a>> {
         self.objs.iter().filter(ObjSchema::is_table)
     }
@@ -52,5 +45,14 @@ impl<'a> DbSchema<'a> {
 
     pub fn triggers(&self) -> impl Iterator<Item = &ObjSchema<'a>> {
         self.objs.iter().filter(ObjSchema::is_trigger)
+    }
+
+    pub fn table(&self, name: &str) -> Option<&ObjSchema<'a>> {
+        self.tables().find(|t| t.name == name)
+    }
+
+    pub fn has_index(&self, tbl: &str, col: &str) -> bool {
+        self.indexes()
+            .any(|s| s.tbl_name == tbl && s.cols().has(col))
     }
 }
