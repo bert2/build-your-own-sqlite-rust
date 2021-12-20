@@ -59,4 +59,8 @@ impl<'a> ObjSchema<'a> {
     pub fn is_trigger(self: &&ObjSchema<'a>) -> bool {
         self.type_ == "trigger"
     }
+
+    pub fn is_sequence_tbl(self: &ObjSchema<'a>) -> bool {
+        self.name == "sqlite_sequence"
+    }
 }

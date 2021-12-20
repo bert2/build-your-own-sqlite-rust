@@ -1,77 +1,71 @@
-use crate::syntax::Sqlite;
+use crate::{schema::DbSchema, syntax::Sqlite};
 use anyhow::Result;
 
-pub fn sqlite(sql: Sqlite, db: &[u8]) -> Result<String> {
+pub fn sqlite(sql: Sqlite, db_schema: &DbSchema, db: &[u8]) -> Result<()> {
     match sql {
-        Sqlite::DotCmd(cmd) => dot_cmd::run(&cmd, db),
-        Sqlite::SqlStmt(stmt) => sql_stmt::run(stmt, db),
+        Sqlite::DotCmd(cmd) => dot_cmd::run(cmd, db_schema),
+        Sqlite::SqlStmt(stmt) => sql_stmt::run(stmt, db_schema, db),
     }
 }
 
 mod dot_cmd {
     use crate::{schema::*, syntax::DotCmd};
     use anyhow::Result;
-    use std::{borrow::Cow, convert::Into};
+    use std::borrow::Cow;
 
-    pub fn run(cmd: &DotCmd, db: &[u8]) -> Result<String> {
-        match cmd {
-            DotCmd::DbInfo => dbinfo(db),
-            DotCmd::Tables => tables(db),
-            DotCmd::Schema => schema(db),
-        }
+    pub fn run(cmd: DotCmd, db_schema: &DbSchema) -> Result<()> {
+        Ok(match cmd {
+            DotCmd::DbInfo => dbinfo(db_schema),
+            DotCmd::Tables => tables(db_schema),
+            DotCmd::Schema => schema(db_schema),
+        })
     }
 
-    fn dbinfo(db: &[u8]) -> Result<String> {
-        let s = DbSchema::parse(db)?;
+    fn dbinfo(db_schema: &DbSchema) -> () {
+        let s = db_schema;
         let h = &s.db_header;
-        let mut o = vec![];
 
-        o.push(format!("database page size:  {}", h.page_size));
-        o.push(format!("write format:        {}", h.write_format));
-        o.push(format!("read format:         {}", h.read_format));
-        o.push(format!("reserved bytes:      {}", h.reserved_bytes));
-        o.push(format!("file change counter: {}", h.file_change_counter));
-        o.push(format!("database page count: {}", h.db_page_count));
-        o.push(format!("freelist page count: {}", h.freelist_page_count));
-        o.push(format!("schema cookie:       {}", h.schema_cookie));
-        o.push(format!("schema format:       {}", h.schema_format));
-        o.push(format!("default cache size:  {}", h.default_cache_size));
-        o.push(format!("autovacuum top root: {}", h.autovacuum_top_root));
-        o.push(format!("incremental vacuum:  {}", h.incremental_vacuum));
-        o.push(format!("text encoding:       {}", h.text_encoding));
-        o.push(format!("user version:        {}", h.user_version));
-        o.push(format!("application id:      {}", h.application_id));
-        o.push(format!("software version:    {}", h.software_version));
-        o.push(format!("number of tables:    {}", s.tables().count()));
-        o.push(format!("number of indexes:   {}", s.indexes().count()));
-        o.push(format!("number of triggers:  {}", s.triggers().count()));
-        o.push(format!("number of views:     {}", s.views().count()));
-        o.push(format!("schema size:         {}", s.size));
-
-        Ok(o.join("\n"))
+        println!("database page size:  {}", h.page_size);
+        println!("write format:        {}", h.write_format);
+        println!("read format:         {}", h.read_format);
+        println!("reserved bytes:      {}", h.reserved_bytes);
+        println!("file change counter: {}", h.file_change_counter);
+        println!("database page count: {}", h.db_page_count);
+        println!("freelist page count: {}", h.freelist_page_count);
+        println!("schema cookie:       {}", h.schema_cookie);
+        println!("schema format:       {}", h.schema_format);
+        println!("default cache size:  {}", h.default_cache_size);
+        println!("autovacuum top root: {}", h.autovacuum_top_root);
+        println!("incremental vacuum:  {}", h.incremental_vacuum);
+        println!("text encoding:       {}", h.text_encoding);
+        println!("user version:        {}", h.user_version);
+        println!("application id:      {}", h.application_id);
+        println!("software version:    {}", h.software_version);
+        println!("number of tables:    {}", s.tables().count());
+        println!("number of indexes:   {}", s.indexes().count());
+        println!("number of triggers:  {}", s.triggers().count());
+        println!("number of views:     {}", s.views().count());
+        println!("schema size:         {}", s.size);
     }
 
-    fn tables(db: &[u8]) -> Result<String> {
-        Ok(DbSchema::parse(db)?
+    fn tables(db_schema: &DbSchema) -> () {
+        db_schema
             .tables()
-            .map(|t| t.name)
-            .collect::<Vec<_>>()
-            .join(" "))
+            .filter(|t| !t.is_sequence_tbl())
+            .for_each(|t| print!("{} ", t.name));
     }
 
-    fn schema(db: &[u8]) -> Result<String> {
-        fn get_sql<'a>(schema: &ObjSchema<'a>) -> Cow<'a, str> {
-            schema.sql.map_or_else(
-                || format!("[Object '{}' has no CREATE statement]", schema.name).into(),
-                Cow::from,
-            )
-        }
-
-        Ok(DbSchema::parse(db)?
-            .tables()
-            .map(get_sql)
-            .collect::<Vec<_>>()
-            .join("\n"))
+    fn schema(db_schema: &DbSchema) -> () {
+        db_schema
+            .objs
+            .iter()
+            .map(|schema| {
+                schema.sql.map_or_else(
+                    || format!("[Object '{}' has no CREATE statement]\n", schema.name).into(),
+                    Cow::from,
+                )
+            })
+            .for_each(|sql| print!("{} ", sql));
     }
 }
 
@@ -86,7 +80,7 @@ mod sql_stmt {
     use anyhow::{anyhow, bail, Result};
     use itertools::Itertools;
 
-    pub fn run(stmt: SqlStmt, db: &[u8]) -> Result<String> {
+    pub fn run(stmt: SqlStmt, db_schema: &DbSchema, db: &[u8]) -> Result<()> {
         fn is_count_expr(cols: &[ResultExpr]) -> bool {
             cols.len() == 1 && cols[0] == ResultExpr::Count
         }
@@ -103,17 +97,23 @@ mod sql_stmt {
         match stmt {
             SqlStmt::Select { cols, tbl, filter } => {
                 if is_count_expr(&cols) {
-                    count_rows(tbl, &filter, db)
+                    count_rows(tbl, &filter, db_schema, db)?;
                 } else {
-                    select_cols(&get_col_names(&cols)?, tbl, &filter, db)
+                    select_cols(&get_col_names(&cols)?, tbl, &filter, db_schema, db)?;
                 }
             }
             _ => bail!("Not implemented: {:#?}", stmt),
         }
+
+        Ok(())
     }
 
-    fn count_rows(tbl: &str, filter: &Option<BoolExpr>, db: &[u8]) -> Result<String> {
-        let db_schema = DbSchema::parse(db)?;
+    fn count_rows(
+        tbl: &str,
+        filter: &Option<BoolExpr>,
+        db_schema: &DbSchema,
+        db: &[u8],
+    ) -> Result<()> {
         let page_size = db_schema.db_header.page_size.into();
         let schema = db_schema
             .table(tbl)
@@ -131,16 +131,17 @@ mod sql_stmt {
             })
             .fold_ok(0, |count, _| count + 1)?;
 
-        Ok(format!("{}", count))
+        println!("{}", count);
+        Ok(())
     }
 
     fn select_cols(
         result_cols: &[&str],
         tbl: &str,
         filter: &Option<BoolExpr>,
+        db_schema: &DbSchema,
         db: &[u8],
-    ) -> Result<String> {
-        let db_schema = DbSchema::parse(db)?;
+    ) -> Result<()> {
         let page_size = db_schema.db_header.page_size.into();
         let schema = db_schema
             .table(tbl)
@@ -162,24 +163,24 @@ mod sql_stmt {
                 )
             })?;
 
-        let _idx_schema = filter
-            .as_ref()
-            .and_then(BoolExpr::index_searchable_col)
-            .and_then(|c| db_schema.index(tbl, c));
+        let indexed_col = filter.as_ref().and_then(BoolExpr::index_searchable_col);
+        let _use_pk = indexed_col.map(|c| schema.cols().is_int_pk(c));
+
+        //let _idx_schema = indexed_col.and_then(|c| db_schema.index(tbl, c));
 
         let rootpage = Page::parse(schema.rootpage, page_size, db)?;
 
-        Ok(rootpage
+        let rows = rootpage
             .leaf_pages(page_size, db)
             .flat_map_ok_and_then(Page::cells)
-            .filter_ok(|cell| match &filter {
+            .filter_ok(move |cell| match &filter {
                 Some(expr) => match expr.eval(cell, schema).unwrap() {
                     Value::Int(b) => b == 1,
                     _ => panic!("BoolExpr didn't return a Value::Int"),
                 },
                 None => true,
             })
-            .map_ok(|cell| {
+            .map_ok(move |cell| {
                 result_cols
                     .iter()
                     .map(|res_col| {
@@ -191,8 +192,12 @@ mod sql_stmt {
                     })
                     .collect::<Vec<_>>()
                     .join("|")
-            })
-            .collect::<Result<Vec<_>>>()?
-            .join("\n"))
+            });
+
+        for row in rows {
+            println!("{}", row?)
+        }
+
+        Ok(())
     }
 }

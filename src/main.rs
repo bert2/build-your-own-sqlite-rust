@@ -1,5 +1,5 @@
 use anyhow::{anyhow, bail, Result};
-use sqlite_starter_rust::{interpreter::exec, syntax::parse};
+use sqlite_starter_rust::{interpreter::exec, schema::DbSchema, syntax::parse};
 use std::{env::args, fs::File, io::Read};
 
 fn main() -> Result<()> {
@@ -9,9 +9,8 @@ fn main() -> Result<()> {
     let db = read_db(db_file)?;
 
     let sql = parse::sqlite(sql).map_err(|e| anyhow!("Invalid SQL: {}", e))?;
-
-    let output = exec::sqlite(sql, &db)?;
-    println!("{}", output);
+    let schema = DbSchema::parse(&db)?;
+    exec::sqlite(sql, &schema, &db)?;
 
     Ok(())
 }

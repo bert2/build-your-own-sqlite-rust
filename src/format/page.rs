@@ -5,7 +5,7 @@ use crate::{
 use anyhow::*;
 use std::{
     convert::{TryFrom, TryInto},
-    iter::{self, once},
+    iter::once,
 };
 
 #[derive(Debug)]
@@ -40,7 +40,7 @@ impl<'a> Page<'a> {
         db: &'a [u8],
     ) -> impl Iterator<Item = Result<Page<'a>>> {
         if self.header.page_type == PageType::LeafTbl {
-            return IterEither::left(iter::once(Ok(self)));
+            return IterEither::left(once(Ok(self)));
         }
 
         assert!(
