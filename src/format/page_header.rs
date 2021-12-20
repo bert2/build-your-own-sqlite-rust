@@ -3,10 +3,10 @@ use std::convert::TryInto;
 
 #[derive(Debug, PartialEq)]
 pub enum PageType {
-    InteriorIndex = 2,
-    InteriorTable = 5,
-    LeafIndex = 10,
-    LeafTable = 13,
+    IntrIdx = 2,
+    IntrTbl = 5,
+    LeafIdx = 10,
+    LeafTbl = 13,
 }
 
 #[derive(Debug)]
@@ -22,10 +22,10 @@ pub struct PageHeader {
 impl PageHeader {
     pub fn parse(stream: &[u8]) -> Result<Self> {
         let page_type = match stream[0] {
-            2 => PageType::InteriorIndex,
-            5 => PageType::InteriorTable,
-            10 => PageType::LeafIndex,
-            13 => PageType::LeafTable,
+            2 => PageType::IntrIdx,
+            5 => PageType::IntrTbl,
+            10 => PageType::LeafIdx,
+            13 => PageType::LeafTbl,
             x => bail!("Invalid page type encountered: {}", x),
         };
         let first_free_block_start = u16::from_be_bytes(stream[1..3].try_into()?);
@@ -33,7 +33,7 @@ impl PageHeader {
         let start_of_content_area = u16::from_be_bytes(stream[5..7].try_into()?);
         let fragmented_free_bytes = stream[7];
         let right_most_pointer = match page_type {
-            PageType::InteriorTable | PageType::InteriorIndex => {
+            PageType::IntrTbl | PageType::IntrIdx => {
                 Some(u32::from_be_bytes(stream[8..12].try_into()?))
             }
             _ => None,
@@ -50,7 +50,7 @@ impl PageHeader {
     }
 
     pub const fn is_leaf(&self) -> bool {
-        matches!(self.page_type, PageType::LeafTable | PageType::LeafIndex)
+        matches!(self.page_type, PageType::LeafTbl | PageType::LeafIdx)
     }
 
     pub fn size(&self) -> usize {

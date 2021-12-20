@@ -1,5 +1,5 @@
 use crate::{
-    format::{cell::*, record::*},
+    format::{cell::*, col_content::*},
     schema::*,
     syntax::ast::*,
 };

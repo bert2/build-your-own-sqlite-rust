@@ -146,7 +146,6 @@ mod sql_stmt {
         let schema = db_schema
             .table(tbl)
             .ok_or_else(|| anyhow!("Table '{}' not found", tbl))?;
-        let rootpage = Page::parse(schema.rootpage, page_size, db)?;
 
         filter
             .iter()
@@ -168,6 +167,8 @@ mod sql_stmt {
             .as_ref()
             .and_then(BoolExpr::index_searchable_col)
             .and_then(|c| db_schema.index(tbl, c));
+
+        let rootpage = Page::parse(schema.rootpage, page_size, db)?;
 
         Ok(rootpage
             .leaf_pages(page_size, db)

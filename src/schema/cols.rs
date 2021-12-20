@@ -61,7 +61,7 @@ impl<'a> Cols<'a> {
     pub fn record_pos(&self, col: &str) -> usize {
         match self {
             Self::TblCols { name_to_pos, .. } => name_to_pos[col],
-            Self::IdxCol(_) => panic!("Cannot get record position of index column {}", col),
+            Self::IdxCol(_) => 0,
         }
     }
 }
