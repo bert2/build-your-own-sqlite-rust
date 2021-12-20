@@ -1,4 +1,4 @@
-use crate::syntax::ast::Sqlite;
+use crate::syntax::Sqlite;
 use anyhow::Result;
 
 pub fn sqlite(sql: Sqlite, db: &[u8]) -> Result<String> {
@@ -9,7 +9,7 @@ pub fn sqlite(sql: Sqlite, db: &[u8]) -> Result<String> {
 }
 
 mod dot_cmd {
-    use crate::{schema::*, syntax::ast::DotCmd};
+    use crate::{schema::*, syntax::DotCmd};
     use anyhow::Result;
     use std::{borrow::Cow, convert::Into};
 
@@ -77,15 +77,14 @@ mod dot_cmd {
 
 mod sql_stmt {
     use crate::{
-        format::page::Page,
+        format::Page,
         interpreter::eval::{Eval, Value},
         schema::*,
-        syntax::ast::*,
+        syntax::*,
         util::*,
     };
     use anyhow::{anyhow, bail, Result};
     use itertools::Itertools;
-    use std::convert::Into;
 
     pub fn run(stmt: SqlStmt, db: &[u8]) -> Result<String> {
         fn is_count_expr(cols: &[ResultExpr]) -> bool {

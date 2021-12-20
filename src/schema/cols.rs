@@ -1,7 +1,4 @@
-use crate::{
-    syntax::{ast::*, parse},
-    util::*,
-};
+use crate::{syntax::*, util::*};
 use anyhow::*;
 use std::{collections::HashMap, iter::once};
 

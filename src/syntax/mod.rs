@@ -1,3 +1,5 @@
-pub mod ast;
+mod ast;
 pub mod parse;
-pub mod util;
+mod util;
+
+pub use ast::*;

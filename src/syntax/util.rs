@@ -24,12 +24,6 @@ pub fn terminated_ws0<'a, O, E: ParseError<&'a str>, F: Parser<&'a str, O, E>>(
     terminated(f, multispace0)
 }
 
-pub fn terminated_ws1<'a, O, E: ParseError<&'a str>, F: Parser<&'a str, O, E>>(
-    f: F,
-) -> impl Parser<&'a str, O, E> {
-    terminated(f, multispace1)
-}
-
 pub fn delimited_ws0<'a, O, E: ParseError<&'a str>, F: Parser<&'a str, O, E>>(
     f: F,
 ) -> impl Parser<&'a str, O, E> {

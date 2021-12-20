@@ -1,4 +1,4 @@
-use crate::{format::cell::*, schema::Cols};
+use crate::{format::*, schema::Cols};
 use anyhow::*;
 use std::convert::*;
 

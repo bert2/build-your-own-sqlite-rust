@@ -2,6 +2,6 @@ mod cols;
 mod db_schema;
 mod obj_schema;
 
-pub use cols::Cols;
-pub use db_schema::DbSchema;
-pub use obj_schema::ObjSchema;
+pub use cols::*;
+pub use db_schema::*;
+pub use obj_schema::*;
