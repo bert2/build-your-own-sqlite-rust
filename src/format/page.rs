@@ -52,7 +52,12 @@ impl<'a> Page<'a> {
         let cell_ptrs_offset =
             self.header.size() + if self.is_db_schema { DbHeader::SIZE } else { 0 };
 
-        let right_most_child_page = self.header.right_most_pointer.unwrap();
+        let right_most_child_page = self.header.right_most_pointer.unwrap_or_else(|| {
+            panic!(
+                "{:?} expected to have right most child page pointer",
+                self.header.page_type
+            )
+        });
 
         let leaves = self.data[cell_ptrs_offset..]
             .chunks_exact(2)
