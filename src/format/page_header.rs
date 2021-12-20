@@ -16,7 +16,7 @@ pub struct PageHeader {
     pub number_of_cells: u16,
     pub start_of_content_area: u16,
     pub fragmented_free_bytes: u8,
-    pub right_most_pointer: Option<u32>,
+    pub right_most_pointer: Option<i32>,
 }
 
 impl PageHeader {
@@ -34,7 +34,7 @@ impl PageHeader {
         let fragmented_free_bytes = stream[7];
         let right_most_pointer = match page_type {
             PageType::IntrTbl | PageType::IntrIdx => {
-                Some(u32::from_be_bytes(stream[8..12].try_into()?))
+                Some(i32::from_be_bytes(stream[8..12].try_into()?))
             }
             _ => None,
         };

@@ -5,7 +5,7 @@ use crate::{
 use anyhow::*;
 use std::{
     convert::{TryFrom, TryInto},
-    iter,
+    iter::{self, once},
 };
 
 #[derive(Debug)]
@@ -52,12 +52,15 @@ impl<'a> Page<'a> {
         let cell_ptrs_offset =
             self.header.size() + if self.is_db_schema { DbHeader::SIZE } else { 0 };
 
+        let right_most_child_page = self.header.right_most_pointer.unwrap();
+
         let leaves = self.data[cell_ptrs_offset..]
             .chunks_exact(2)
             .take(self.header.number_of_cells.into())
             .map(|bytes| usize::from(u16::from_be_bytes(bytes.try_into().unwrap())))
             .map(move |cell_ptr| IntrTblCell::parse(&self.data[cell_ptr..]))
             .map_ok_and_then(move |cell| Page::parse(cell.child_page, page_size, db))
+            .chain(once(Page::parse(right_most_child_page, page_size, db)))
             .flat_map_ok_and_then(move |page| {
                 Box::new(page.leaf_pages(page_size, db))
                     as Box<dyn Iterator<Item = Result<Page<'a>>>>
