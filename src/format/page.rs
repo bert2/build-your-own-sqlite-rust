@@ -43,7 +43,7 @@ impl<'a> Page<'a> {
             IterEither::left(iter::once(Ok(self)))
         } else {
             assert!(
-                self.header.page_type != PageType::IntrTbl,
+                self.header.page_type == PageType::IntrTbl,
                 "Cannot get leaf pages of {:?}",
                 self.header.page_type
             );

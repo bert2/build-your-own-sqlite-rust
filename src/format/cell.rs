@@ -23,7 +23,7 @@ impl<'a> LeafTblCell<'a> {
         Ok(LeafTblCell {
             payload_size,
             row_id,
-            payload: Record::parse(&stream[offset..])?,
+            payload: Record::parse(&stream[offset..offset + payload_size])?,
         })
     }
 }
