@@ -1,5 +1,6 @@
 use crate::{
     format::{cell::*, db_header::*, page_header::*},
+    interpreter::eval::*,
     util::*,
 };
 use anyhow::*;
@@ -127,5 +128,48 @@ impl<'a> Page<'a> {
 
         Page::parse(self.header.right_most_ptr.unwrap(), page_size, db)?
             .find_cell(row_id, page_size, db)
+    }
+
+    pub fn find_idx_cell(
+        self,
+        key: Value,
+        page_size: usize,
+        db: &'a [u8],
+    ) -> Result<Option<LeafIdxCell<'a>>> {
+        if self.header.page_type == PageType::LeafIdx {
+            let leaf_cells = self
+                .cell_ptrs()
+                .map(|cell_ptr| LeafIdxCell::parse(&self.data[cell_ptr..]));
+
+            for cell in leaf_cells {
+                let cell = cell?;
+                if Value::try_from(&cell.payload[0])? == key {
+                    return Ok(Some(cell));
+                }
+            }
+
+            return Ok(None);
+        }
+
+        assert!(
+            self.header.page_type == PageType::IntrIdx,
+            "Cannot search cells by index in {:?}",
+            self.header.page_type
+        );
+
+        let intr_cells = self
+            .cell_ptrs()
+            .map(|cell_ptr| IntrIdxCell::parse(&self.data[cell_ptr..]));
+
+        for cell in intr_cells {
+            let cell = cell?;
+            if key <= Value::try_from(&cell.payload[0])? {
+                return Page::parse(cell.child_page, page_size, db)?
+                    .find_idx_cell(key, page_size, db);
+            }
+        }
+
+        Page::parse(self.header.right_most_ptr.unwrap(), page_size, db)?
+            .find_idx_cell(key, page_size, db)
     }
 }

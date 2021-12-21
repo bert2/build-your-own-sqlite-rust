@@ -100,16 +100,16 @@ impl<'a> BoolExpr<'a> {
         }
     }
 
-    pub fn index_searchable_col(&self) -> Option<&str> {
+    pub fn index_servable(&self) -> Option<(&str, &Expr)> {
         match self {
             BoolExpr::Equals {
                 l: Expr::ColName(c),
-                r: other,
+                r: expr,
             }
             | BoolExpr::Equals {
-                l: other,
+                l: expr,
                 r: Expr::ColName(c),
-            } if !matches!(other, Expr::ColName(_)) => Some(c),
+            } if !matches!(expr, Expr::ColName(_)) => Some((c, expr)),
             _ => None,
         }
     }

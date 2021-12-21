@@ -7,6 +7,7 @@ use crate::{
 };
 use anyhow::{anyhow, bail, Result};
 use itertools::Itertools;
+use std::convert::TryFrom;
 
 pub fn run(stmt: SqlStmt, db_schema: &DbSchema, db: &[u8]) -> Result<()> {
     fn is_count_expr(cols: &[ResultExpr]) -> bool {
@@ -85,11 +86,29 @@ fn select_cols(
         .filter(|(col, _)| schema.cols().is_int_pk(col))
         .map(|(_, pk)| pk);
 
+    let idx_to_search = filter
+        .as_ref()
+        .and_then(BoolExpr::index_servable)
+        .and_then(|(col, key)| db_schema.index(tbl, col).map(|idx| (idx, key)));
+
     if let Some(pk) = int_pk_to_search {
         rootpage
             .find_cell(pk, page_size, db)?
             .iter()
             .for_each(|cell| println!("{}", print_row(cell, result_cols, schema)));
+    } else if let Some((idx, key)) = idx_to_search {
+        let rows = Page::parse(idx.rootpage, page_size, db)?
+            .find_idx_cell(Value::try_from(key)?, page_size, db)?
+            .map(|cell| i64::try_from(&cell.payload[1]))
+            .transpose()?
+            .map(|row_id| rootpage.find_cell(row_id, page_size, db))
+            .transpose()?
+            .flatten()
+            .map(|cell| print_row(&cell, result_cols, schema));
+
+        for row in rows {
+            println!("{}", row);
+        }
     } else {
         let rows = rootpage
             .leaf_pages(page_size, db)

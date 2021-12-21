@@ -1,6 +1,5 @@
 use crate::{schema::*, syntax::DotCmd};
 use anyhow::Result;
-use std::borrow::Cow;
 
 pub fn run(cmd: DotCmd, db_schema: &DbSchema) -> Result<()> {
     Ok(match cmd {
@@ -45,14 +44,11 @@ fn tables(db_schema: &DbSchema) -> () {
 }
 
 fn schema(db_schema: &DbSchema) -> () {
-    db_schema
-        .objs
-        .iter()
-        .map(|schema| {
-            schema.sql.map_or_else(
-                || format!("[Object '{}' has no CREATE statement]\n", schema.name).into(),
-                Cow::from,
-            )
-        })
-        .for_each(|sql| print!("{} ", sql));
+    db_schema.objs.iter().for_each(|schema| match schema.sql {
+        Some(sql) => println!("{};", sql),
+        None => println!(
+            "-- The {} '{}' has no CREATE statement",
+            schema.type_, schema.name
+        ),
+    });
 }

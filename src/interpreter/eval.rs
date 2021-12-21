@@ -1,8 +1,8 @@
 use crate::{format::*, schema::*, syntax::*};
-use anyhow::Result;
+use anyhow::{bail, Result};
 use std::convert::*;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, PartialOrd)]
 pub enum Value<'a> {
     Null,
     Int(i64),
@@ -58,6 +58,19 @@ impl<'a> TryFrom<&ColContent<'a>> for Value<'a> {
             ColContent::Float64(_) => Value::Float(f64::try_from(content)?),
             ColContent::Blob(bs) => Value::Bytes(bs),
             ColContent::Text(_) => Value::String(<&str>::try_from(content)?),
+        })
+    }
+}
+
+impl<'a> TryFrom<&Expr<'a>> for Value<'a> {
+    type Error = anyhow::Error;
+
+    fn try_from(expr: &Expr<'a>) -> Result<Self, Self::Error> {
+        Ok(match expr {
+            Expr::Null => Value::Null,
+            Expr::Int(n) => Value::Int(*n),
+            Expr::String(s) => Value::String(s),
+            _ => bail!("Expr {:?} cannot be converted to Value", expr),
         })
     }
 }
