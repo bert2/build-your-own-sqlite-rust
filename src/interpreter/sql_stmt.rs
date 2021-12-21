@@ -1,5 +1,5 @@
 use crate::{
-    format::Page,
+    format::{LeafTblCell, Page},
     interpreter::eval::{Eval, Value},
     schema::*,
     syntax::*,
@@ -87,39 +87,57 @@ fn select_cols(
         })?;
 
     let indexed_col = filter.as_ref().and_then(BoolExpr::index_searchable_col);
-    let _use_pk = indexed_col.map(|c| schema.cols().is_int_pk(c));
+    let use_pk = indexed_col.map(|c| schema.cols().is_int_pk(c));
 
     //let _idx_schema = indexed_col.and_then(|c| db_schema.index(tbl, c));
 
     let rootpage = Page::parse(schema.rootpage, page_size, db)?;
 
-    let rows = rootpage
-        .leaf_pages(page_size, db)
-        .flat_map_ok_and_then(Page::cells)
-        .filter_ok(move |cell| match &filter {
-            Some(expr) => match expr.eval(cell, schema).unwrap() {
-                Value::Int(b) => b == 1,
-                _ => panic!("BoolExpr didn't return a Value::Int"),
-            },
-            None => true,
-        })
-        .map_ok(move |cell| {
-            result_cols
-                .iter()
-                .map(|res_col| {
-                    if schema.cols().is_int_pk(res_col) {
-                        cell.row_id.to_string()
-                    } else {
-                        format!("{}", cell.payload[schema.cols().record_pos(res_col)])
-                    }
-                })
-                .collect::<Vec<_>>()
-                .join("|")
-        });
+    if use_pk.contains_(&true) {
+        let pk = filter
+            .as_ref()
+            .unwrap()
+            .int_pk_value()
+            .expect("Filter shoud contain int pk value");
+        let cell = rootpage.find_cell(pk, page_size, db)?;
+        match cell {
+            Some(cell) => {
+                let row = print_row(&cell, result_cols, schema);
+                println!("{}", row);
+            }
+            _ => {}
+        }
+    } else {
+        let rows = rootpage
+            .leaf_pages(page_size, db)
+            .flat_map_ok_and_then(Page::cells)
+            .filter_ok(move |cell| match &filter {
+                Some(expr) => match expr.eval(cell, schema).unwrap() {
+                    Value::Int(b) => b == 1,
+                    _ => panic!("BoolExpr didn't return a Value::Int"),
+                },
+                None => true,
+            })
+            .map_ok(move |cell| print_row(&cell, result_cols, schema));
 
-    for row in rows {
-        println!("{}", row?)
+        for row in rows {
+            println!("{}", row?);
+        }
     }
 
     Ok(())
+}
+
+fn print_row(cell: &LeafTblCell, result_cols: &[&str], schema: &ObjSchema) -> String {
+    result_cols
+        .iter()
+        .map(|res_col| {
+            if schema.cols().is_int_pk(res_col) {
+                cell.row_id.to_string()
+            } else {
+                format!("{}", cell.payload[schema.cols().record_pos(res_col)])
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("|")
 }

@@ -95,15 +95,21 @@ impl<'a> BoolExpr<'a> {
             | BoolExpr::Equals {
                 l: other,
                 r: Expr::ColName(c),
-            }
-            | BoolExpr::NotEquals {
-                l: Expr::ColName(c),
-                r: other,
-            }
-            | BoolExpr::NotEquals {
-                l: other,
-                r: Expr::ColName(c),
             } if !matches!(other, Expr::ColName(_)) => Some(c),
+            _ => None,
+        }
+    }
+
+    pub fn int_pk_value(&self) -> Option<i64> {
+        match self {
+            BoolExpr::Equals {
+                l: Expr::ColName(_),
+                r: Expr::Int(idx),
+            }
+            | BoolExpr::Equals {
+                l: Expr::Int(idx),
+                r: Expr::ColName(_),
+            } => Some(*idx),
             _ => None,
         }
     }
