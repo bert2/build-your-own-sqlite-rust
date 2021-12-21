@@ -24,14 +24,24 @@ impl<'a> Page<'a> {
         })
     }
 
-    pub fn parse(rootpage: i32, page_size: usize, db: &'a [u8]) -> Result<Self> {
-        let page_offset = usize::try_from(rootpage - 1).unwrap() * page_size;
+    pub fn parse(page_num: i32, page_size: usize, db: &'a [u8]) -> Result<Self> {
+        let page_offset = usize::try_from(page_num - 1).unwrap() * page_size;
 
         Ok(Page {
             header: PageHeader::parse(&db[page_offset..])?,
             data: &db[page_offset..page_offset + page_size],
             is_db_schema: false,
         })
+    }
+
+    pub fn cell_ptrs(&self) -> impl Iterator<Item = usize> + 'a {
+        let cell_ptrs_offset =
+            self.header.size() + if self.is_db_schema { DbHeader::SIZE } else { 0 };
+
+        self.data[cell_ptrs_offset..]
+            .chunks_exact(2)
+            .take(self.header.number_of_cells.into())
+            .map(|bytes| usize::from(u16::from_be_bytes(bytes.try_into().unwrap())))
     }
 
     pub fn leaf_pages(
@@ -88,9 +98,8 @@ impl<'a> Page<'a> {
     ) -> Result<Option<LeafTblCell<'a>>> {
         if self.header.page_type == PageType::LeafTbl {
             for cell in self.cells() {
-                let cell = cell?;
-                if cell.row_id == row_id {
-                    return Ok(Some(cell));
+                if cell?.row_id == row_id {
+                    return Ok(Some(cell?));
                 }
             }
 
@@ -99,7 +108,7 @@ impl<'a> Page<'a> {
 
         assert!(
             self.header.page_type == PageType::IntrTbl,
-            "Cannot index-search for cells in {:?}",
+            "Cannot search cells by integer primary key in {:?}",
             self.header.page_type
         );
 
@@ -108,24 +117,13 @@ impl<'a> Page<'a> {
             .map(|cell_ptr| IntrTblCell::parse(&self.data[cell_ptr..]));
 
         for cell in intr_cells {
-            let cell = cell?;
-            if row_id <= cell.row_id {
-                return Page::parse(cell.child_page, page_size, db)?
+            if row_id <= cell?.row_id {
+                return Page::parse(cell?.child_page, page_size, db)?
                     .find_cell(row_id, page_size, db);
             }
         }
 
         Page::parse(self.header.right_most_ptr.unwrap(), page_size, db)?
             .find_cell(row_id, page_size, db)
-    }
-
-    pub fn cell_ptrs(&self) -> impl Iterator<Item = usize> + 'a {
-        let cell_ptrs_offset =
-            self.header.size() + if self.is_db_schema { DbHeader::SIZE } else { 0 };
-
-        self.data[cell_ptrs_offset..]
-            .chunks_exact(2)
-            .take(self.header.number_of_cells.into())
-            .map(|bytes| usize::from(u16::from_be_bytes(bytes.try_into().unwrap())))
     }
 }

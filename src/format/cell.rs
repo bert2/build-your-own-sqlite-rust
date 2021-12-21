@@ -1,4 +1,4 @@
-use crate::format::{record::*, varint};
+use crate::format::{record::Record, varint};
 use anyhow::Result;
 use std::convert::TryInto;
 
@@ -20,7 +20,7 @@ impl<'a> LeafTblCell<'a> {
         let (row_id, bytes_read) = varint::parse(&stream[offset..]);
         offset += bytes_read;
 
-        Ok(LeafTblCell {
+        Ok(Self {
             payload_size,
             row_id,
             payload: Record::parse(&stream[offset..offset + payload_size])?,
