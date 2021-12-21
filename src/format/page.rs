@@ -45,17 +45,6 @@ impl<'a> Page<'a> {
             .map(|bytes| usize::from(u16::from_be_bytes(bytes.try_into().unwrap())))
     }
 
-    pub fn cells(self) -> impl Iterator<Item = Result<LeafTblCell<'a>>> {
-        assert!(
-            self.header.page_type == PageType::LeafTbl,
-            "Cannot get cells of {:?}",
-            self.header.page_type
-        );
-
-        self.cell_ptrs()
-            .map(move |cell_ptr| LeafTblCell::parse(&self.data[cell_ptr..]))
-    }
-
     pub fn leaf_pages(
         self,
         page_size: usize,
@@ -92,13 +81,16 @@ impl<'a> Page<'a> {
     }
 
     pub fn find_cell(
-        self,
+        &self,
         row_id: i64,
         page_size: usize,
         db: &'a [u8],
     ) -> Result<Option<LeafTblCell<'a>>> {
         if self.header.page_type == PageType::LeafTbl {
-            for cell in self.cells() {
+            for cell in self
+                .cell_ptrs()
+                .map(move |cell_ptr| LeafTblCell::parse(&self.data[cell_ptr..]))
+            {
                 let cell = cell?;
                 if cell.row_id == row_id {
                     return Ok(Some(cell));

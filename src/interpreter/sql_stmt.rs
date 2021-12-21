@@ -47,7 +47,10 @@ fn count_rows(tbl: &str, filter: &Option<BoolExpr>, db_schema: &DbSchema, db: &[
 
     let count = Page::parse(schema.rootpage, page_size, db)?
         .leaf_pages(page_size, db)
-        .flat_map_ok_and_then(|page| page.cells())
+        .flat_map_ok_and_then(|page| {
+            page.cell_ptrs()
+                .map(move |cell_ptr| LeafTblCell::parse(&page.data[cell_ptr..]))
+        })
         .filter_ok(|cell| match &filter {
             Some(expr) => match expr.eval(cell, schema).unwrap() {
                 Value::Int(b) => b == 1,
@@ -111,7 +114,10 @@ fn select_cols(
     } else {
         let rows = rootpage
             .leaf_pages(page_size, db)
-            .flat_map_ok_and_then(|page| page.cells())
+            .flat_map_ok_and_then(|page| {
+                page.cell_ptrs()
+                    .map(move |cell_ptr| LeafTblCell::parse(&page.data[cell_ptr..]))
+            })
             .filter_ok(move |cell| match &filter {
                 Some(expr) => match expr.eval(cell, schema).unwrap() {
                     Value::Int(b) => b == 1,
