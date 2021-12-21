@@ -47,7 +47,7 @@ fn count_rows(tbl: &str, filter: &Option<BoolExpr>, db_schema: &DbSchema, db: &[
 
     let count = Page::parse(schema.rootpage, page_size, db)?
         .leaf_pages(page_size, db)
-        .flat_map_ok_and_then(Page::cells)
+        .flat_map_ok_and_then(|page| page.cells())
         .filter_ok(|cell| match &filter {
             Some(expr) => match expr.eval(cell, schema).unwrap() {
                 Value::Int(b) => b == 1,
@@ -98,21 +98,20 @@ fn select_cols(
             .for_each(|cell| println!("{}", print_row(cell, result_cols, schema)));
     } else if let Some((idx, key)) = idx_to_search {
         let rows = Page::parse(idx.rootpage, page_size, db)?
-            .find_idx_cell(Value::try_from(key)?, page_size, db)?
-            .map(|cell| i64::try_from(&cell.payload[1]))
-            .transpose()?
-            .map(|row_id| rootpage.find_cell(row_id, page_size, db))
-            .transpose()?
-            .flatten()
-            .map(|cell| print_row(&cell, result_cols, schema));
+            .find_idx_cells(Value::try_from(key)?, page_size, db)
+            .map_ok_and_then(|cell| i64::try_from(&cell.payload[1]))
+            .map_ok_and_then(|row_id| rootpage.find_cell(row_id, page_size, db))
+            .map_ok(|cell| cell.into_iter())
+            .flatten_ok()
+            .map_ok(|cell| print_row(&cell, result_cols, schema));
 
         for row in rows {
-            println!("{}", row);
+            println!("{}", row?);
         }
     } else {
         let rows = rootpage
             .leaf_pages(page_size, db)
-            .flat_map_ok_and_then(Page::cells)
+            .flat_map_ok_and_then(|page| page.cells())
             .filter_ok(move |cell| match &filter {
                 Some(expr) => match expr.eval(cell, schema).unwrap() {
                     Value::Int(b) => b == 1,

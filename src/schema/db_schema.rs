@@ -20,7 +20,7 @@ impl<'a> DbSchema<'a> {
             db_header,
             objs: rootpage
                 .leaf_pages(page_size, db)
-                .flat_map_ok_and_then(Page::cells)
+                .flat_map_ok_and_then(|page| page.cells())
                 .map_ok_and_then(|c| ObjSchema::parse(&c))
                 .collect::<Result<Vec<_>>>()?,
             size: page_size - page_content_offset - DbHeader::SIZE,

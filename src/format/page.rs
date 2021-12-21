@@ -126,29 +126,31 @@ impl<'a> Page<'a> {
             }
         }
 
-        Page::parse(self.header.right_most_ptr.unwrap(), page_size, db)?
-            .find_cell(row_id, page_size, db)
+        let right_most_child_page = self.header.right_most_ptr.unwrap_or_else(|| {
+            panic!(
+                "Expected {:?} to have right most child page pointer",
+                self.header.page_type
+            )
+        });
+
+        Page::parse(right_most_child_page, page_size, db)?.find_cell(row_id, page_size, db)
     }
 
-    pub fn find_idx_cell(
+    pub fn find_idx_cells(
         self,
-        key: Value,
+        key: Value<'a>,
         page_size: usize,
         db: &'a [u8],
-    ) -> Result<Option<LeafIdxCell<'a>>> {
+    ) -> impl Iterator<Item = Result<LeafIdxCell<'a>>> {
         if self.header.page_type == PageType::LeafIdx {
-            let leaf_cells = self
+            let cells = self
                 .cell_ptrs()
-                .map(|cell_ptr| LeafIdxCell::parse(&self.data[cell_ptr..]));
+                .map(move |cell_ptr| LeafIdxCell::parse(&self.data[cell_ptr..]).unwrap())
+                .skip_while(move |cell| Value::try_from(&cell.payload[0]).unwrap() < key)
+                .take_while(move |cell| Value::try_from(&cell.payload[0]).unwrap() == key)
+                .map(Ok);
 
-            for cell in leaf_cells {
-                let cell = cell?;
-                if Value::try_from(&cell.payload[0])? == key {
-                    return Ok(Some(cell));
-                }
-            }
-
-            return Ok(None);
+            return IterEither::left(cells);
         }
 
         assert!(
@@ -157,19 +159,27 @@ impl<'a> Page<'a> {
             self.header.page_type
         );
 
-        let intr_cells = self
+        let right_most_child_page = self.header.right_most_ptr.unwrap_or_else(|| {
+            panic!(
+                "Expected {:?} to have right most child page pointer",
+                self.header.page_type
+            )
+        });
+
+        let cells = self
             .cell_ptrs()
-            .map(|cell_ptr| IntrIdxCell::parse(&self.data[cell_ptr..]));
+            .map(|cell_ptr| IntrIdxCell::parse(&self.data[cell_ptr..]).unwrap())
+            .find(|cell| key <= Value::try_from(&cell.payload[0]).unwrap())
+            .into_iter()
+            .map(move |cell| Page::parse(cell.child_page, page_size, db))
+            .chain(once(Page::parse(right_most_child_page, page_size, db)))
+            .flat_map_ok_and_then(move |page| {
+                Box::new(page.find_idx_cells(key, page_size, db))
+                    as Box<dyn Iterator<Item = Result<LeafIdxCell<'a>>>>
+            });
 
-        for cell in intr_cells {
-            let cell = cell?;
-            if key <= Value::try_from(&cell.payload[0])? {
-                return Page::parse(cell.child_page, page_size, db)?
-                    .find_idx_cell(key, page_size, db);
-            }
-        }
+        IterEither::right(cells)
 
-        Page::parse(self.header.right_most_ptr.unwrap(), page_size, db)?
-            .find_idx_cell(key, page_size, db)
+        //.collect::<Vec<_>>().into_iter().map(|x|x)
     }
 }

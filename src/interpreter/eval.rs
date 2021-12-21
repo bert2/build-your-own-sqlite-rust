@@ -2,7 +2,7 @@ use crate::{format::*, schema::*, syntax::*};
 use anyhow::{bail, Result};
 use std::convert::*;
 
-#[derive(Debug, PartialEq, PartialOrd)]
+#[derive(Debug, Copy, Clone, PartialEq, PartialOrd)]
 pub enum Value<'a> {
     Null,
     Int(i64),
