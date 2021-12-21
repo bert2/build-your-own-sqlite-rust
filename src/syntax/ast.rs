@@ -86,6 +86,20 @@ impl<'a> BoolExpr<'a> {
         }
     }
 
+    pub fn int_pk_servable(&self) -> Option<(&str, i64)> {
+        match self {
+            BoolExpr::Equals {
+                l: Expr::ColName(c),
+                r: Expr::Int(pk),
+            }
+            | BoolExpr::Equals {
+                l: Expr::Int(pk),
+                r: Expr::ColName(c),
+            } => Some((c, *pk)),
+            _ => None,
+        }
+    }
+
     pub fn index_searchable_col(&self) -> Option<&str> {
         match self {
             BoolExpr::Equals {
@@ -96,20 +110,6 @@ impl<'a> BoolExpr<'a> {
                 l: other,
                 r: Expr::ColName(c),
             } if !matches!(other, Expr::ColName(_)) => Some(c),
-            _ => None,
-        }
-    }
-
-    pub fn int_pk_value(&self) -> Option<i64> {
-        match self {
-            BoolExpr::Equals {
-                l: Expr::ColName(_),
-                r: Expr::Int(idx),
-            }
-            | BoolExpr::Equals {
-                l: Expr::Int(idx),
-                r: Expr::ColName(_),
-            } => Some(*idx),
             _ => None,
         }
     }

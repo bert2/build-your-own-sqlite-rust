@@ -86,27 +86,22 @@ fn select_cols(
             )
         })?;
 
-    let indexed_col = filter.as_ref().and_then(BoolExpr::index_searchable_col);
-    let use_pk = indexed_col.map(|c| schema.cols().is_int_pk(c));
-
-    //let _idx_schema = indexed_col.and_then(|c| db_schema.index(tbl, c));
+    //let indexed_col = filter.as_ref().and_then(BoolExpr::index_searchable_col);
+    //let idx_schema = indexed_col.and_then(|c| db_schema.index(tbl, c));
 
     let rootpage = Page::parse(schema.rootpage, page_size, db)?;
 
-    if use_pk.contains_(&true) {
-        let pk = filter
-            .as_ref()
-            .unwrap()
-            .int_pk_value()
-            .expect("Filter shoud contain int pk value");
-        let cell = rootpage.find_cell(pk, page_size, db)?;
-        match cell {
-            Some(cell) => {
-                let row = print_row(&cell, result_cols, schema);
-                println!("{}", row);
-            }
-            _ => {}
-        }
+    let int_pk_to_search = filter
+        .as_ref()
+        .and_then(BoolExpr::int_pk_servable)
+        .filter(|(col, _)| schema.cols().is_int_pk(col))
+        .map(|(_, pk)| pk);
+
+    if let Some(pk) = int_pk_to_search {
+        rootpage
+            .find_cell(pk, page_size, db)?
+            .iter()
+            .for_each(|cell| println!("{}", print_row(cell, result_cols, schema)));
     } else {
         let rows = rootpage
             .leaf_pages(page_size, db)
@@ -131,11 +126,11 @@ fn select_cols(
 fn print_row(cell: &LeafTblCell, result_cols: &[&str], schema: &ObjSchema) -> String {
     result_cols
         .iter()
-        .map(|res_col| {
-            if schema.cols().is_int_pk(res_col) {
+        .map(|col| {
+            if schema.cols().is_int_pk(col) {
                 cell.row_id.to_string()
             } else {
-                format!("{}", cell.payload[schema.cols().record_pos(res_col)])
+                format!("{}", cell.payload[schema.cols().record_pos(col)])
             }
         })
         .collect::<Vec<_>>()
