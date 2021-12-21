@@ -42,6 +42,8 @@ fn count_rows(tbl: &str, filter: &Option<BoolExpr>, db_schema: &DbSchema, db: &[
         .table(tbl)
         .ok_or_else(|| anyhow!("Table '{}' not found", tbl))?;
 
+    validate_cols(&[], filter, schema)?;
+
     let count = Page::parse(schema.rootpage, page_size, db)?
         .leaf_pages(page_size, db)
         .flat_map_ok_and_then(Page::cells)
@@ -70,21 +72,7 @@ fn select_cols(
         .table(tbl)
         .ok_or_else(|| anyhow!("Table '{}' not found", tbl))?;
 
-    filter
-        .iter()
-        .flat_map(BoolExpr::referenced_cols)
-        .chain(result_cols.iter().copied())
-        .try_for_each(|col| {
-            if schema.cols().has(col) {
-                return Ok(());
-            }
-
-            bail!(
-                "Unknown column '{}'. Did you mean '{}'?",
-                col,
-                str_sim::most_similar(col, schema.cols().names()).unwrap()
-            )
-        })?;
+    validate_cols(result_cols, filter, schema)?;
 
     //let indexed_col = filter.as_ref().and_then(BoolExpr::index_searchable_col);
     //let idx_schema = indexed_col.and_then(|c| db_schema.index(tbl, c));
@@ -135,4 +123,26 @@ fn print_row(cell: &LeafTblCell, result_cols: &[&str], schema: &ObjSchema) -> St
         })
         .collect::<Vec<_>>()
         .join("|")
+}
+
+fn validate_cols(
+    result_cols: &[&str],
+    filter: &Option<BoolExpr>,
+    schema: &ObjSchema,
+) -> Result<()> {
+    filter
+        .iter()
+        .flat_map(BoolExpr::referenced_cols)
+        .chain(result_cols.iter().copied())
+        .try_for_each(|col| {
+            if schema.cols().has(col) {
+                return Ok(());
+            }
+
+            bail!(
+                "Unknown column '{}'. Did you mean '{}'?",
+                col,
+                str_sim::most_similar(col, schema.cols().names()).unwrap()
+            )
+        })
 }
