@@ -75,14 +75,15 @@ fn int_pk_search(
     page_size: usize,
     db: &[u8],
 ) -> Result<()> {
-    if let Some(cell) = rootpage.find_cell(pk, page_size, db)? {
-        let mut row = eval_row(cell, select_stmt, tbl);
+    let row = rootpage
+        .find_cell(pk, page_size, db)?
+        .map(|cell| eval_row(cell, select_stmt, tbl))
+        .ok_or(select_stmt);
 
-        if select_stmt.has_count_expr() {
-            println!("{}", replace_count(row, 1)?.join_ok("|")?);
-        } else {
-            println!("{}", row.join_ok("|")?);
-        }
+    if select_stmt.has_count_expr() {
+        println!("{}", replace_count(row, 1)?.join_ok("|")?);
+    } else if let Ok(mut row) = row {
+        println!("{}", row.join_ok("|")?);
     }
 
     Ok(())
@@ -105,9 +106,8 @@ fn idx_search(
         .map_ok(|cell| eval_row(cell, select_stmt, tbl));
 
     if select_stmt.has_count_expr() {
-        if let Some(first) = rows.next().transpose()? {
-            println!("{}", replace_count(first, rows.count() + 1)?.join_ok("|")?);
-        }
+        let first = rows.next().transpose()?.ok_or(select_stmt);
+        println!("{}", replace_count(first, rows.count() + 1)?.join_ok("|")?);
     } else {
         for row in rows {
             println!("{}", row?.join_ok("|")?);
@@ -140,9 +140,8 @@ fn tbl_search(
         .map_ok(|cell| eval_row(cell, select_stmt, tbl));
 
     if select_stmt.has_count_expr() {
-        if let Some(first) = rows.next().transpose()? {
-            println!("{}", replace_count(first, rows.count() + 1)?.join_ok("|")?);
-        }
+        let first = rows.next().transpose()?.ok_or(select_stmt);
+        println!("{}", replace_count(first, rows.count() + 1)?.join_ok("|")?);
     } else {
         for row in rows {
             println!("{}", row?.join_ok("|")?);
@@ -164,16 +163,28 @@ fn eval_row<'a>(
 }
 
 fn replace_count<'a>(
-    row: impl Iterator<Item = Result<Value<'a>>> + 'a,
+    row: Result<impl Iterator<Item = Result<Value<'a>>> + 'a, &'a Select>,
     count: usize,
 ) -> Result<impl Iterator<Item = Result<Value<'a>>> + 'a>
 where
 {
-    let count = count.try_into()?;
-    Ok(row.map_ok(move |col| match col {
-        Value::CountPlaceholder => Value::Int(count),
-        _ => col,
-    }))
+    match row {
+        Ok(row) => {
+            let count = count.try_into()?;
+            let row = row.map_ok(move |col| match col {
+                Value::CountPlaceholder => Value::Int(count),
+                _ => col,
+            });
+            Ok(IterEither::left(row))
+        }
+        Err(select_stmt) => {
+            let empty_row = select_stmt.cols.iter().map(|col| match col {
+                Expr::Count => Ok(Value::Int(0)),
+                _ => Ok(Value::String("")),
+            });
+            Ok(IterEither::right(empty_row))
+        }
+    }
 }
 
 fn validate_col_names(select_stmt: &Select, tbl_schema: &ObjSchema) -> Result<()> {
