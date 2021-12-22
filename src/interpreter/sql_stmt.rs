@@ -146,7 +146,7 @@ fn tbl_search(
     page_size: usize,
     db: &[u8],
 ) -> Result<()> {
-    let rows = rootpage
+    let mut rows = rootpage
         .leaf_pages(page_size, db)
         .flat_map_ok_and_then(|page| {
             page.cell_ptrs()
@@ -161,8 +161,19 @@ fn tbl_search(
         })
         .map_ok(move |cell| print_row(&cell, select_stmt, tbl));
 
-    for row in rows {
-        println!("{}", row?);
+    if select_stmt.find_count_expr_in_cols().is_some() {
+        let first_row = rows
+            .next()
+            .transpose()?
+            .map(|r| r.replace("{{COUNT(*)}}", &(rows.count() + 1).to_string()));
+
+        if let Some(r) = first_row {
+            println!("{}", r);
+        }
+    } else {
+        for row in rows {
+            println!("{}", row?);
+        }
     }
 
     Ok(())

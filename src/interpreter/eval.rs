@@ -1,5 +1,5 @@
 use crate::{format::*, schema::*, syntax::*};
-use anyhow::{bail, Result};
+use anyhow::Result;
 use std::{convert::TryFrom, fmt};
 
 #[derive(Debug, Copy, Clone, PartialEq, PartialOrd)]
@@ -26,7 +26,7 @@ impl<'a> Eval<'a> for Expr<'a> {
                     Value::try_from(&cell.payload[schema.cols().record_pos(col)])?
                 }
             }
-            Expr::Count => bail!("Cannot evaluate count expression"),
+            Expr::Count => Value::String("{{COUNT(*)}}"),
         })
     }
 }

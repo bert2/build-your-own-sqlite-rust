@@ -83,6 +83,10 @@ impl<'a> Select<'a> {
     pub fn selected_col_names(&self) -> impl Iterator<Item = &str> {
         self.cols.iter().filter_map(Expr::as_col_name)
     }
+
+    pub fn find_count_expr_in_cols(&self) -> Option<usize> {
+        self.cols.iter().position(|c| matches!(c, Expr::Count))
+    }
 }
 
 impl<'a> BoolExpr<'a> {
