@@ -1,6 +1,6 @@
 use crate::{format::*, schema::*, syntax::*};
 use anyhow::{bail, Result};
-use std::convert::*;
+use std::{convert::TryFrom, fmt};
 
 #[derive(Debug, Copy, Clone, PartialEq, PartialOrd)]
 pub enum Value<'a> {
@@ -67,6 +67,23 @@ impl<'a> From<&Literal<'a>> for Value<'a> {
             Literal::Null => Self::Null,
             Literal::Int(n) => Self::Int(*n),
             Literal::String(s) => Self::String(s),
+        }
+    }
+}
+
+impl<'a> fmt::Display for Value<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Value::Null => write!(f, "NULL"),
+            Value::Int(x) => write!(f, "{}", x),
+            Value::Float(x) => write!(f, "{}", x),
+            Value::Bytes(bytes) => {
+                for byte in *bytes {
+                    write!(f, "{:02X} ", byte)?;
+                }
+                Ok(())
+            }
+            Value::String(s) => write!(f, "{}", s),
         }
     }
 }

@@ -1,7 +1,7 @@
 use anyhow::{anyhow, bail, Result};
 use std::{
     convert::{TryFrom, TryInto},
-    fmt, str,
+    str,
 };
 
 #[derive(Debug)]
@@ -43,32 +43,6 @@ impl<'a> ColContent<'a> {
             }
             n => bail!("Invalid serial type: {}", n),
         })
-    }
-}
-
-impl<'a> fmt::Display for ColContent<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            ColContent::Null => write!(f, "NULL"),
-            ColContent::Zero
-            | ColContent::One
-            | ColContent::Int8(_)
-            | ColContent::Int16(_)
-            | ColContent::Int24(_)
-            | ColContent::Int32(_)
-            | ColContent::Int48(_)
-            | ColContent::Int64(_) => {
-                write!(f, "{}", i64::try_from(self).unwrap())
-            }
-            ColContent::Float64(_) => write!(f, "{}", f64::try_from(self).unwrap()),
-            ColContent::Blob(bytes) => {
-                for byte in *bytes {
-                    write!(f, "{:02X} ", byte)?;
-                }
-                Ok(())
-            }
-            ColContent::Text(_) => write!(f, "{}", <&str>::try_from(self).unwrap()),
-        }
     }
 }
 

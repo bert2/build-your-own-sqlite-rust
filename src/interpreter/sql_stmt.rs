@@ -170,12 +170,17 @@ fn tbl_search(
 
 fn print_row(cell: &LeafTblCell, select_stmt: &Select, tbl_schema: &ObjSchema) -> String {
     select_stmt
-        .selected_cols()
+        .cols
+        .iter()
         .map(|col| {
-            if tbl_schema.cols().is_int_pk(col) {
+            let is_int_pk = col
+                .as_col_name()
+                .filter(|c| tbl_schema.cols().is_int_pk(c))
+                .is_some();
+            if is_int_pk {
                 cell.row_id.to_string()
             } else {
-                format!("{}", cell.payload[tbl_schema.cols().record_pos(col)])
+                format!("{}", col.eval(cell, tbl_schema).unwrap())
             }
         })
         .collect::<Vec<_>>()
@@ -183,11 +188,11 @@ fn print_row(cell: &LeafTblCell, select_stmt: &Select, tbl_schema: &ObjSchema) -
 }
 
 fn validate_col_names(select_stmt: &Select, tbl_schema: &ObjSchema) -> Result<()> {
-    let selected_cols = select_stmt.selected_cols();
+    let selected_cols = select_stmt.selected_col_names();
     let filtered_cols = select_stmt
         .filter
         .iter()
-        .flat_map(BoolExpr::referenced_cols);
+        .flat_map(BoolExpr::referenced_col_names);
 
     selected_cols.chain(filtered_cols).try_for_each(|col| {
         if tbl_schema.cols().has(col) {
