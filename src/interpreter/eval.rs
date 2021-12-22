@@ -1,5 +1,5 @@
 use crate::{format::*, schema::*, syntax::*};
-use anyhow::Result;
+use anyhow::{bail, Result};
 use std::convert::*;
 
 #[derive(Debug, Copy, Clone, PartialEq, PartialOrd)]
@@ -26,6 +26,7 @@ impl<'a> Eval<'a> for Expr<'a> {
                     Value::try_from(&cell.payload[schema.cols().record_pos(col)])?
                 }
             }
+            Expr::Count => bail!("Cannot evaluate count expression"),
         })
     }
 }
@@ -44,18 +45,18 @@ impl<'a> TryFrom<&ColContent<'a>> for Value<'a> {
 
     fn try_from(content: &ColContent<'a>) -> Result<Self, Self::Error> {
         Ok(match content {
-            ColContent::Null => Value::Null,
-            ColContent::Zero => Value::Int(0),
-            ColContent::One => Value::Int(1),
+            ColContent::Null => Self::Null,
+            ColContent::Zero => Self::Int(0),
+            ColContent::One => Self::Int(1),
             ColContent::Int8(_)
             | ColContent::Int16(_)
             | ColContent::Int24(_)
             | ColContent::Int32(_)
             | ColContent::Int48(_)
-            | ColContent::Int64(_) => Value::Int(i64::try_from(content)?),
-            ColContent::Float64(_) => Value::Float(f64::try_from(content)?),
-            ColContent::Blob(bs) => Value::Bytes(bs),
-            ColContent::Text(_) => Value::String(<&str>::try_from(content)?),
+            | ColContent::Int64(_) => Self::Int(i64::try_from(content)?),
+            ColContent::Float64(_) => Self::Float(f64::try_from(content)?),
+            ColContent::Blob(bs) => Self::Bytes(bs),
+            ColContent::Text(_) => Self::String(<&str>::try_from(content)?),
         })
     }
 }
@@ -63,9 +64,9 @@ impl<'a> TryFrom<&ColContent<'a>> for Value<'a> {
 impl<'a> From<&Literal<'a>> for Value<'a> {
     fn from(expr: &Literal<'a>) -> Self {
         match expr {
-            Literal::Null => Value::Null,
-            Literal::Int(n) => Value::Int(*n),
-            Literal::String(s) => Value::String(s),
+            Literal::Null => Self::Null,
+            Literal::Int(n) => Self::Int(*n),
+            Literal::String(s) => Self::String(s),
         }
     }
 }

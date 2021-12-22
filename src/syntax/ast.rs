@@ -29,22 +29,17 @@ pub enum SqlStmt<'a> {
         target_col: &'a str,
     },
     Select {
-        cols: Vec<ResultExpr<'a>>,
+        cols: Vec<Expr<'a>>,
         tbl: &'a str,
         filter: Option<BoolExpr<'a>>,
     },
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub enum ResultExpr<'a> {
-    Count,
-    Value(Expr<'a>),
-}
-
-#[derive(Debug, PartialEq, Clone)]
 pub enum Expr<'a> {
     Literal(Literal<'a>),
     ColName(&'a str),
+    Count,
 }
 
 #[derive(Debug, PartialEq, Clone)]

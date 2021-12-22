@@ -10,14 +10,14 @@ use itertools::Itertools;
 use std::convert::TryFrom;
 
 pub fn run(stmt: SqlStmt, db_schema: &DbSchema, db: &[u8]) -> Result<()> {
-    fn is_count_expr(cols: &[ResultExpr]) -> bool {
-        cols.len() == 1 && cols[0] == ResultExpr::Count
+    fn is_count_expr(cols: &[Expr]) -> bool {
+        cols.len() == 1 && cols[0] == Expr::Count
     }
 
-    fn get_col_names<'a>(cols: &'a [ResultExpr]) -> Result<Vec<&'a str>> {
+    fn get_col_names<'a>(cols: &'a [Expr]) -> Result<Vec<&'a str>> {
         cols.iter()
             .map(|c| match c {
-                ResultExpr::Value(Expr::ColName(name)) => Ok(*name),
+                Expr::ColName(name) => Ok(*name),
                 _ => bail!("Unexpected expression among result columns: {:?}", c),
             })
             .collect::<Result<Vec<_>>>()

@@ -136,12 +136,8 @@ mod parsers {
         .parse(i)
     }
 
-    fn select_result_cols(i: &str) -> R<Vec<ResultExpr>> {
-        comma_separated_list1(alt((
-            value(ResultExpr::Count, tag_no_case("COUNT(*)")),
-            identifier.map(Expr::ColName).map(ResultExpr::Value),
-        )))
-        .parse(i)
+    fn select_result_cols(i: &str) -> R<Vec<Expr>> {
+        comma_separated_list1(alt((value(Expr::Count, tag_no_case("COUNT(*)")), expr))).parse(i)
     }
 
     fn select_filter(i: &str) -> R<BoolExpr> {
@@ -305,7 +301,7 @@ mod test {
             assert_eq!(
                 sql_stmt("select foo from bar").unwrap(),
                 SqlStmt::Select {
-                    cols: vec![ResultExpr::Value(Expr::ColName("foo"))],
+                    cols: vec![Expr::ColName("foo")],
                     tbl: "bar",
                     filter: None
                 }
@@ -317,7 +313,7 @@ mod test {
             assert_eq!(
                 sql_stmt("select count(*) from bar").unwrap(),
                 SqlStmt::Select {
-                    cols: vec![ResultExpr::Count],
+                    cols: vec![Expr::Count],
                     tbl: "bar",
                     filter: None
                 }
@@ -330,9 +326,9 @@ mod test {
                 sql_stmt("select foo, bar, qux from my_tbl").unwrap(),
                 SqlStmt::Select {
                     cols: vec![
-                        ResultExpr::Value(Expr::ColName("foo")),
-                        ResultExpr::Value(Expr::ColName("bar")),
-                        ResultExpr::Value(Expr::ColName("qux"))
+                        Expr::ColName("foo"),
+                        Expr::ColName("bar"),
+                        Expr::ColName("qux")
                     ],
                     tbl: "my_tbl",
                     filter: None
@@ -345,7 +341,7 @@ mod test {
             assert_eq!(
                 sql_stmt("select foo from \"my tbl!\"").unwrap(),
                 SqlStmt::Select {
-                    cols: vec![ResultExpr::Value(Expr::ColName("foo"))],
+                    cols: vec![Expr::ColName("foo")],
                     tbl: "my tbl!",
                     filter: None
                 }
@@ -357,7 +353,7 @@ mod test {
             assert_eq!(
                 sql_stmt("select foo from bar where qux = 'my filter'").unwrap(),
                 SqlStmt::Select {
-                    cols: vec![ResultExpr::Value(Expr::ColName("foo"))],
+                    cols: vec![Expr::ColName("foo")],
                     tbl: "bar",
                     filter: Some(BoolExpr::Equals {
                         l: Expr::ColName("qux"),
