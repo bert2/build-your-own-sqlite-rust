@@ -159,12 +159,18 @@ fn tbl_search(
             },
             None => true,
         })
-        .map_ok(move |cell| print_row(&cell, select_stmt, tbl));
+        .map_ok(|cell| eval_row(cell, select_stmt, tbl));
 
-    if let Some(count) = select_stmt.find_count_expr_in_cols() {
-        if let Some(mut first_row) = rows.next().transpose()? {
-            first_row[count] = (rows.count() + 1).to_string();
-            println!("{}", first_row.join("|"));
+    if select_stmt.has_count_expr() {
+        if let Some(first_row) = rows.next().transpose()? {
+            let count = rows.count() + 1;
+            let first_row = first_row
+                .map(|col| match col {
+                    Value::CountPlaceholder => count.to_string(),
+                    _ => format!("{}", col),
+                })
+                .join("|");
+            println!("{}", first_row);
         }
     } else {
         for row in rows {
@@ -175,12 +181,15 @@ fn tbl_search(
     Ok(())
 }
 
-fn print_row(cell: &LeafTblCell, select_stmt: &Select, tbl_schema: &ObjSchema) -> Vec<String> {
+fn eval_row<'a>(
+    cell: LeafTblCell<'a>,
+    select_stmt: &'a Select,
+    tbl_schema: &'a ObjSchema,
+) -> impl Iterator<Item = Value<'a>> {
     select_stmt
         .cols
         .iter()
-        .map(|col| format!("{}", col.eval(cell, tbl_schema).unwrap()))
-        .collect::<Vec<_>>()
+        .map(move |col| col.eval(&cell, tbl_schema).unwrap())
 }
 
 fn print_row2(cell: &LeafTblCell, select_stmt: &Select, tbl_schema: &ObjSchema) -> String {

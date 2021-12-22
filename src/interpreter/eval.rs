@@ -9,6 +9,7 @@ pub enum Value<'a> {
     Float(f64),
     Bytes(&'a [u8]),
     String(&'a str),
+    CountPlaceholder,
 }
 
 pub trait Eval<'a> {
@@ -26,7 +27,7 @@ impl<'a> Eval<'a> for Expr<'a> {
                     Value::try_from(&cell.payload[schema.cols().record_pos(col)])?
                 }
             }
-            Expr::Count => Value::String("{{COUNT(*)}}"),
+            Expr::Count => Value::CountPlaceholder,
         })
     }
 }
@@ -84,6 +85,7 @@ impl<'a> fmt::Display for Value<'a> {
                 Ok(())
             }
             Value::String(s) => write!(f, "{}", s),
+            Value::CountPlaceholder => panic!("Unexpected CountPlaceholder"),
         }
     }
 }
