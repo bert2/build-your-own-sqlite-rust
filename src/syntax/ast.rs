@@ -80,13 +80,13 @@ impl<'a> Expr<'a> {
 }
 
 impl<'a> Select<'a> {
-    pub fn selected_cols(&self) -> impl Iterator<Item = &str> {
+    pub fn selected_col_names(&self) -> impl Iterator<Item = &str> {
         self.cols.iter().filter_map(Expr::as_col_name)
     }
 }
 
 impl<'a> BoolExpr<'a> {
-    pub fn referenced_cols(&self) -> impl Iterator<Item = &str> {
+    pub fn referenced_col_names(&self) -> impl Iterator<Item = &str> {
         match self {
             BoolExpr::Equals { l, r } | BoolExpr::NotEquals { l, r } => l
                 .as_col_name()

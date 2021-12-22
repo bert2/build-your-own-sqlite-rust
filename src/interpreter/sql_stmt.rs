@@ -14,12 +14,6 @@ pub fn run(stmt: SqlStmt, db_schema: &DbSchema, db: &[u8]) -> Result<()> {
         cols.len() == 1 && cols[0] == Expr::Count
     }
 
-    fn get_col_names<'a>(cols: &'a [Expr]) -> Vec<&'a str> {
-        cols.iter()
-            .filter_map(Expr::as_col_name)
-            .collect::<Vec<_>>()
-    }
-
     match stmt {
         SqlStmt::Select(select_stmt) => {
             let page_size = db_schema.db_header.page_size.into();
@@ -32,15 +26,7 @@ pub fn run(stmt: SqlStmt, db_schema: &DbSchema, db: &[u8]) -> Result<()> {
             if is_count_expr(&select_stmt.cols) {
                 count_rows(tbl_schema, &select_stmt.filter, page_size, db)?;
             } else {
-                select_cols(
-                    &get_col_names(&select_stmt.cols),
-                    select_stmt.tbl,
-                    tbl_schema,
-                    &select_stmt.filter,
-                    db_schema,
-                    page_size,
-                    db,
-                )?;
+                select_cols(tbl_schema, &select_stmt, db_schema, page_size, db)?;
             }
         }
         _ => bail!("Not implemented: {:#?}", stmt),
@@ -75,29 +61,28 @@ fn count_rows(
 }
 
 fn select_cols(
-    result_cols: &[&str],
-    tbl: &str,
     tbl_schema: &ObjSchema,
-    filter: &Option<BoolExpr>,
+    select_stmt: &Select,
     db_schema: &DbSchema,
     page_size: usize,
     db: &[u8],
 ) -> Result<()> {
     let rootpage = Page::parse(tbl_schema.rootpage, page_size, db)?;
 
-    if let Some(pk) = by_int_pk(filter, tbl_schema) {
-        int_pk_search(pk, &rootpage, result_cols, tbl_schema, page_size, db)?;
-    } else if let Some((idx, key)) = by_idx_key(filter, tbl, db_schema) {
-        idx_search(key, idx, &rootpage, result_cols, tbl_schema, page_size, db)?;
+    if let Some(pk) = by_int_pk(select_stmt, tbl_schema) {
+        int_pk_search(pk, &rootpage, select_stmt, tbl_schema, page_size, db)?;
+    } else if let Some((idx, key)) = by_idx_key(select_stmt, db_schema) {
+        idx_search(key, idx, &rootpage, select_stmt, tbl_schema, page_size, db)?;
     } else {
-        tbl_search(filter, rootpage, result_cols, tbl_schema, page_size, db)?;
+        tbl_search(rootpage, select_stmt, tbl_schema, page_size, db)?;
     }
 
     Ok(())
 }
 
-fn by_int_pk(filter: &Option<BoolExpr>, schema: &ObjSchema) -> Option<i64> {
-    filter
+fn by_int_pk(select_stmt: &Select, schema: &ObjSchema) -> Option<i64> {
+    select_stmt
+        .filter
         .as_ref()
         .and_then(BoolExpr::is_int_pk_servable)
         .filter(|(col, _)| schema.cols().is_int_pk(col))
@@ -105,20 +90,20 @@ fn by_int_pk(filter: &Option<BoolExpr>, schema: &ObjSchema) -> Option<i64> {
 }
 
 fn by_idx_key<'a>(
-    filter: &'a Option<BoolExpr>,
-    tbl: &str,
+    select_stmt: &'a Select,
     db_schema: &'a DbSchema,
 ) -> Option<(&'a ObjSchema<'a>, &'a Literal<'a>)> {
-    filter
+    select_stmt
+        .filter
         .as_ref()
         .and_then(BoolExpr::is_index_servable)
-        .and_then(|(col, key)| db_schema.index(tbl, col).map(|idx| (idx, key)))
+        .and_then(|(col, key)| db_schema.index(select_stmt.tbl, col).map(|idx| (idx, key)))
 }
 
 fn int_pk_search(
     pk: i64,
     rootpage: &Page,
-    result_cols: &[&str],
+    select_stmt: &Select,
     tbl: &ObjSchema,
     page_size: usize,
     db: &[u8],
@@ -126,7 +111,7 @@ fn int_pk_search(
     rootpage
         .find_cell(pk, page_size, db)?
         .iter()
-        .for_each(|cell| println!("{}", print_row(cell, result_cols, tbl)));
+        .for_each(|cell| println!("{}", print_row(cell, select_stmt, tbl)));
 
     Ok(())
 }
@@ -135,7 +120,7 @@ fn idx_search(
     key: &Literal,
     idx: &ObjSchema,
     rootpage: &Page,
-    result_cols: &[&str],
+    select_stmt: &Select,
     tbl: &ObjSchema,
     page_size: usize,
     db: &[u8],
@@ -145,7 +130,7 @@ fn idx_search(
         .map_ok_and_then(|cell| i64::try_from(&cell.payload[1]))
         .map_ok_and_then(|row_id| rootpage.find_cell(row_id, page_size, db))
         .flatten_ok()
-        .map_ok(|cell| print_row(&cell, result_cols, tbl));
+        .map_ok(|cell| print_row(&cell, select_stmt, tbl));
 
     for row in rows {
         println!("{}", row?);
@@ -155,9 +140,8 @@ fn idx_search(
 }
 
 fn tbl_search(
-    filter: &Option<BoolExpr>,
     rootpage: Page,
-    result_cols: &[&str],
+    select_stmt: &Select,
     tbl: &ObjSchema,
     page_size: usize,
     db: &[u8],
@@ -168,14 +152,14 @@ fn tbl_search(
             page.cell_ptrs()
                 .map(move |cell_ptr| LeafTblCell::parse(&page.data[cell_ptr..]))
         })
-        .filter_ok(move |cell| match &filter {
+        .filter_ok(move |cell| match &select_stmt.filter {
             Some(expr) => match expr.eval(cell, tbl).unwrap() {
                 Value::Int(b) => b == 1,
                 _ => panic!("BoolExpr didn't return a Value::Int"),
             },
             None => true,
         })
-        .map_ok(move |cell| print_row(&cell, result_cols, tbl));
+        .map_ok(move |cell| print_row(&cell, select_stmt, tbl));
 
     for row in rows {
         println!("{}", row?);
@@ -184,14 +168,14 @@ fn tbl_search(
     Ok(())
 }
 
-fn print_row(cell: &LeafTblCell, result_cols: &[&str], schema: &ObjSchema) -> String {
-    result_cols
-        .iter()
+fn print_row(cell: &LeafTblCell, select_stmt: &Select, tbl_schema: &ObjSchema) -> String {
+    select_stmt
+        .selected_cols()
         .map(|col| {
-            if schema.cols().is_int_pk(col) {
+            if tbl_schema.cols().is_int_pk(col) {
                 cell.row_id.to_string()
             } else {
-                format!("{}", cell.payload[schema.cols().record_pos(col)])
+                format!("{}", cell.payload[tbl_schema.cols().record_pos(col)])
             }
         })
         .collect::<Vec<_>>()
