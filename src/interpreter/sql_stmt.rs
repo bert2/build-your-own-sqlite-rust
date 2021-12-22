@@ -111,7 +111,7 @@ fn int_pk_search(
     rootpage
         .find_cell(pk, page_size, db)?
         .iter()
-        .for_each(|cell| println!("{}", print_row(cell, select_stmt, tbl)));
+        .for_each(|cell| println!("{}", print_row2(cell, select_stmt, tbl)));
 
     Ok(())
 }
@@ -130,7 +130,7 @@ fn idx_search(
         .map_ok_and_then(|cell| i64::try_from(&cell.payload[1]))
         .map_ok_and_then(|row_id| rootpage.find_cell(row_id, page_size, db))
         .flatten_ok()
-        .map_ok(|cell| print_row(&cell, select_stmt, tbl));
+        .map_ok(|cell| print_row2(&cell, select_stmt, tbl));
 
     for row in rows {
         println!("{}", row?);
@@ -161,25 +161,29 @@ fn tbl_search(
         })
         .map_ok(move |cell| print_row(&cell, select_stmt, tbl));
 
-    if select_stmt.find_count_expr_in_cols().is_some() {
-        let first_row = rows
-            .next()
-            .transpose()?
-            .map(|r| r.replace("{{COUNT(*)}}", &(rows.count() + 1).to_string()));
-
-        if let Some(r) = first_row {
-            println!("{}", r);
+    if let Some(count) = select_stmt.find_count_expr_in_cols() {
+        if let Some(mut first_row) = rows.next().transpose()? {
+            first_row[count] = (rows.count() + 1).to_string();
+            println!("{}", first_row.join("|"));
         }
     } else {
         for row in rows {
-            println!("{}", row?);
+            println!("{}", row?.join("|"));
         }
     }
 
     Ok(())
 }
 
-fn print_row(cell: &LeafTblCell, select_stmt: &Select, tbl_schema: &ObjSchema) -> String {
+fn print_row(cell: &LeafTblCell, select_stmt: &Select, tbl_schema: &ObjSchema) -> Vec<String> {
+    select_stmt
+        .cols
+        .iter()
+        .map(|col| format!("{}", col.eval(cell, tbl_schema).unwrap()))
+        .collect::<Vec<_>>()
+}
+
+fn print_row2(cell: &LeafTblCell, select_stmt: &Select, tbl_schema: &ObjSchema) -> String {
     select_stmt
         .cols
         .iter()
