@@ -1,5 +1,5 @@
 use crate::{format::*, schema::*, syntax::*};
-use anyhow::{bail, Result};
+use anyhow::Result;
 use std::convert::*;
 
 #[derive(Debug, Copy, Clone, PartialEq, PartialOrd)]
@@ -18,9 +18,7 @@ pub trait Eval<'a> {
 impl<'a> Eval<'a> for Expr<'a> {
     fn eval(&self, cell: &LeafTblCell<'a>, schema: &ObjSchema<'a>) -> Result<Value<'a>> {
         Ok(match self {
-            Expr::Null => Value::Null,
-            Expr::String(s) => Value::String(s),
-            Expr::Int(i) => Value::Int(*i),
+            Expr::Literal(l) => l.into(),
             Expr::ColName(col) => {
                 if schema.cols().is_int_pk(col) {
                     Value::Int(cell.row_id)
@@ -62,15 +60,12 @@ impl<'a> TryFrom<&ColContent<'a>> for Value<'a> {
     }
 }
 
-impl<'a> TryFrom<&Expr<'a>> for Value<'a> {
-    type Error = anyhow::Error;
-
-    fn try_from(expr: &Expr<'a>) -> Result<Self, Self::Error> {
-        Ok(match expr {
-            Expr::Null => Value::Null,
-            Expr::Int(n) => Value::Int(*n),
-            Expr::String(s) => Value::String(s),
-            _ => bail!("Expr {:?} cannot be converted to Value", expr),
-        })
+impl<'a> From<&Literal<'a>> for Value<'a> {
+    fn from(expr: &Literal<'a>) -> Self {
+        match expr {
+            Literal::Null => Value::Null,
+            Literal::Int(n) => Value::Int(*n),
+            Literal::String(s) => Value::String(s),
+        }
     }
 }

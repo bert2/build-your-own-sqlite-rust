@@ -43,10 +43,15 @@ pub enum ResultExpr<'a> {
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Expr<'a> {
+    Literal(Literal<'a>),
+    ColName(&'a str),
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum Literal<'a> {
     Null,
     String(&'a str),
     Int(i64),
-    ColName(&'a str),
 }
 
 #[derive(Debug, PartialEq)]
@@ -86,30 +91,30 @@ impl<'a> BoolExpr<'a> {
         }
     }
 
-    pub fn int_pk_servable(&self) -> Option<(&str, i64)> {
+    pub fn is_int_pk_servable(&self) -> Option<(&str, i64)> {
         match self {
             BoolExpr::Equals {
                 l: Expr::ColName(c),
-                r: Expr::Int(pk),
+                r: Expr::Literal(Literal::Int(pk)),
             }
             | BoolExpr::Equals {
-                l: Expr::Int(pk),
+                l: Expr::Literal(Literal::Int(pk)),
                 r: Expr::ColName(c),
             } => Some((c, *pk)),
             _ => None,
         }
     }
 
-    pub fn index_servable(&self) -> Option<(&str, &Expr)> {
+    pub fn is_index_servable(&self) -> Option<(&str, &Literal)> {
         match self {
             BoolExpr::Equals {
                 l: Expr::ColName(c),
-                r: expr,
+                r: Expr::Literal(literal),
             }
             | BoolExpr::Equals {
-                l: expr,
+                l: Expr::Literal(literal),
                 r: Expr::ColName(c),
-            } if !matches!(expr, Expr::ColName(_)) => Some((c, expr)),
+            } => Some((c, literal)),
             _ => None,
         }
     }

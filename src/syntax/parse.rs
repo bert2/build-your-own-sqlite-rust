@@ -159,13 +159,16 @@ mod parsers {
         .parse(i)
     }
 
-    fn expr(i: &str) -> R<Expr> {
+    fn lit(i: &str) -> R<Literal> {
         alt((
-            value(Expr::Null, tag_no_case("NULL")),
-            str_lit.map(Expr::String),
-            num.map(Expr::Int),
-            identifier.map(Expr::ColName),
+            value(Literal::Null, tag_no_case("NULL")),
+            str_lit.map(Literal::String),
+            num.map(Literal::Int),
         ))(i)
+    }
+
+    fn expr(i: &str) -> R<Expr> {
+        alt((lit.map(Expr::Literal), identifier.map(Expr::ColName)))(i)
     }
 
     fn identifier(i: &str) -> R<&str> {
@@ -358,7 +361,7 @@ mod test {
                     tbl: "bar",
                     filter: Some(BoolExpr::Equals {
                         l: Expr::ColName("qux"),
-                        r: Expr::String("my filter")
+                        r: Expr::Literal(Literal::String("my filter"))
                     })
                 }
             )

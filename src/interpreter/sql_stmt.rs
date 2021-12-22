@@ -94,7 +94,7 @@ fn select_cols(
 fn by_int_pk(filter: &Option<BoolExpr>, schema: &ObjSchema) -> Option<i64> {
     filter
         .as_ref()
-        .and_then(BoolExpr::int_pk_servable)
+        .and_then(BoolExpr::is_int_pk_servable)
         .filter(|(col, _)| schema.cols().is_int_pk(col))
         .map(|(_, pk)| pk)
 }
@@ -103,10 +103,10 @@ fn by_idx_key<'a>(
     filter: &'a Option<BoolExpr>,
     tbl: &str,
     db_schema: &'a DbSchema,
-) -> Option<(&'a ObjSchema<'a>, &'a Expr<'a>)> {
+) -> Option<(&'a ObjSchema<'a>, &'a Literal<'a>)> {
     filter
         .as_ref()
-        .and_then(BoolExpr::index_servable)
+        .and_then(BoolExpr::is_index_servable)
         .and_then(|(col, key)| db_schema.index(tbl, col).map(|idx| (idx, key)))
 }
 
@@ -127,7 +127,7 @@ fn int_pk_search(
 }
 
 fn idx_search(
-    key: &Expr,
+    key: &Literal,
     idx: &ObjSchema,
     rootpage: &Page,
     result_cols: &[&str],
@@ -136,7 +136,7 @@ fn idx_search(
     db: &[u8],
 ) -> Result<()> {
     let rows = Page::parse(idx.rootpage, page_size, db)?
-        .find_idx_cells(Value::try_from(key)?, page_size, db)
+        .find_idx_cells(key.into(), page_size, db)
         .map_ok_and_then(|cell| i64::try_from(&cell.payload[1]))
         .map_ok_and_then(|row_id| rootpage.find_cell(row_id, page_size, db))
         .flatten_ok()
