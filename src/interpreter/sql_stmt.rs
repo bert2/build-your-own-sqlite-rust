@@ -172,17 +172,7 @@ fn print_row(cell: &LeafTblCell, select_stmt: &Select, tbl_schema: &ObjSchema) -
     select_stmt
         .cols
         .iter()
-        .map(|col| {
-            let is_int_pk = col
-                .as_col_name()
-                .filter(|c| tbl_schema.cols().is_int_pk(c))
-                .is_some();
-            if is_int_pk {
-                cell.row_id.to_string()
-            } else {
-                format!("{}", col.eval(cell, tbl_schema).unwrap())
-            }
-        })
+        .map(|col| format!("{}", col.eval(cell, tbl_schema).unwrap()))
         .collect::<Vec<_>>()
         .join("|")
 }
