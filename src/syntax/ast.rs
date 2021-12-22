@@ -28,11 +28,14 @@ pub enum SqlStmt<'a> {
         target_tbl: &'a str,
         target_col: &'a str,
     },
-    Select {
-        cols: Vec<Expr<'a>>,
-        tbl: &'a str,
-        filter: Option<BoolExpr<'a>>,
-    },
+    Select(Select<'a>),
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Select<'a> {
+    pub cols: Vec<Expr<'a>>,
+    pub tbl: &'a str,
+    pub filter: Option<BoolExpr<'a>>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -73,6 +76,12 @@ impl<'a> Expr<'a> {
             Expr::ColName(c) => Some(c),
             _ => None,
         }
+    }
+}
+
+impl<'a> Select<'a> {
+    pub fn selected_cols(&self) -> impl Iterator<Item = &str> {
+        self.cols.iter().filter_map(Expr::as_col_name)
     }
 }
 

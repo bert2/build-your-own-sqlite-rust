@@ -128,10 +128,12 @@ mod parsers {
             opt(select_filter),
             skip(multispace0),
         ))
-        .map(|x| SqlStmt::Select {
-            cols: x.3,
-            tbl: x.5,
-            filter: x.6,
+        .map(|x| {
+            SqlStmt::Select(Select {
+                cols: x.3,
+                tbl: x.5,
+                filter: x.6,
+            })
         })
         .parse(i)
     }
@@ -300,11 +302,11 @@ mod test {
         fn single_col() {
             assert_eq!(
                 sql_stmt("select foo from bar").unwrap(),
-                SqlStmt::Select {
+                SqlStmt::Select(Select {
                     cols: vec![Expr::ColName("foo")],
                     tbl: "bar",
                     filter: None
-                }
+                })
             )
         }
 
@@ -312,11 +314,11 @@ mod test {
         fn count() {
             assert_eq!(
                 sql_stmt("select count(*) from bar").unwrap(),
-                SqlStmt::Select {
+                SqlStmt::Select(Select {
                     cols: vec![Expr::Count],
                     tbl: "bar",
                     filter: None
-                }
+                })
             )
         }
 
@@ -324,7 +326,7 @@ mod test {
         fn multiple_cols() {
             assert_eq!(
                 sql_stmt("select foo, bar, qux from my_tbl").unwrap(),
-                SqlStmt::Select {
+                SqlStmt::Select(Select {
                     cols: vec![
                         Expr::ColName("foo"),
                         Expr::ColName("bar"),
@@ -332,7 +334,7 @@ mod test {
                     ],
                     tbl: "my_tbl",
                     filter: None
-                }
+                })
             )
         }
 
@@ -340,11 +342,11 @@ mod test {
         fn delimited_table_name() {
             assert_eq!(
                 sql_stmt("select foo from \"my tbl!\"").unwrap(),
-                SqlStmt::Select {
+                SqlStmt::Select(Select {
                     cols: vec![Expr::ColName("foo")],
                     tbl: "my tbl!",
                     filter: None
-                }
+                })
             )
         }
 
@@ -352,14 +354,14 @@ mod test {
         fn with_filter() {
             assert_eq!(
                 sql_stmt("select foo from bar where qux = 'my filter'").unwrap(),
-                SqlStmt::Select {
+                SqlStmt::Select(Select {
                     cols: vec![Expr::ColName("foo")],
                     tbl: "bar",
                     filter: Some(BoolExpr::Equals {
                         l: Expr::ColName("qux"),
                         r: Expr::Literal(Literal::String("my filter"))
                     })
-                }
+                })
             )
         }
     }

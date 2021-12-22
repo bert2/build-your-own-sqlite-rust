@@ -14,21 +14,33 @@ pub fn run(stmt: SqlStmt, db_schema: &DbSchema, db: &[u8]) -> Result<()> {
         cols.len() == 1 && cols[0] == Expr::Count
     }
 
-    fn get_col_names<'a>(cols: &'a [Expr]) -> Result<Vec<&'a str>> {
+    fn get_col_names<'a>(cols: &'a [Expr]) -> Vec<&'a str> {
         cols.iter()
-            .map(|c| match c {
-                Expr::ColName(name) => Ok(*name),
-                _ => bail!("Unexpected expression among result columns: {:?}", c),
-            })
-            .collect::<Result<Vec<_>>>()
+            .filter_map(Expr::as_col_name)
+            .collect::<Vec<_>>()
     }
 
     match stmt {
-        SqlStmt::Select { cols, tbl, filter } => {
-            if is_count_expr(&cols) {
-                count_rows(tbl, &filter, db_schema, db)?;
+        SqlStmt::Select(select_stmt) => {
+            let page_size = db_schema.db_header.page_size.into();
+            let tbl_schema = db_schema
+                .table(select_stmt.tbl)
+                .ok_or_else(|| anyhow!("Table '{}' not found", select_stmt.tbl))?;
+
+            validate_col_names(&select_stmt, tbl_schema)?;
+
+            if is_count_expr(&select_stmt.cols) {
+                count_rows(tbl_schema, &select_stmt.filter, page_size, db)?;
             } else {
-                select_cols(&get_col_names(&cols)?, tbl, &filter, db_schema, db)?;
+                select_cols(
+                    &get_col_names(&select_stmt.cols),
+                    select_stmt.tbl,
+                    tbl_schema,
+                    &select_stmt.filter,
+                    db_schema,
+                    page_size,
+                    db,
+                )?;
             }
         }
         _ => bail!("Not implemented: {:#?}", stmt),
@@ -37,22 +49,20 @@ pub fn run(stmt: SqlStmt, db_schema: &DbSchema, db: &[u8]) -> Result<()> {
     Ok(())
 }
 
-fn count_rows(tbl: &str, filter: &Option<BoolExpr>, db_schema: &DbSchema, db: &[u8]) -> Result<()> {
-    let page_size = db_schema.db_header.page_size.into();
-    let schema = db_schema
-        .table(tbl)
-        .ok_or_else(|| anyhow!("Table '{}' not found", tbl))?;
-
-    validate_cols(&[], filter, schema)?;
-
-    let count = Page::parse(schema.rootpage, page_size, db)?
+fn count_rows(
+    tbl_schema: &ObjSchema,
+    filter: &Option<BoolExpr>,
+    page_size: usize,
+    db: &[u8],
+) -> Result<()> {
+    let count = Page::parse(tbl_schema.rootpage, page_size, db)?
         .leaf_pages(page_size, db)
         .flat_map_ok_and_then(|page| {
             page.cell_ptrs()
                 .map(move |cell_ptr| LeafTblCell::parse(&page.data[cell_ptr..]))
         })
         .filter_ok(|cell| match &filter {
-            Some(expr) => match expr.eval(cell, schema).unwrap() {
+            Some(expr) => match expr.eval(cell, tbl_schema).unwrap() {
                 Value::Int(b) => b == 1,
                 _ => panic!("BoolExpr didn't return a Value::Int"),
             },
@@ -67,25 +77,20 @@ fn count_rows(tbl: &str, filter: &Option<BoolExpr>, db_schema: &DbSchema, db: &[
 fn select_cols(
     result_cols: &[&str],
     tbl: &str,
+    tbl_schema: &ObjSchema,
     filter: &Option<BoolExpr>,
     db_schema: &DbSchema,
+    page_size: usize,
     db: &[u8],
 ) -> Result<()> {
-    let page_size = db_schema.db_header.page_size.into();
-    let schema = db_schema
-        .table(tbl)
-        .ok_or_else(|| anyhow!("Table '{}' not found", tbl))?;
+    let rootpage = Page::parse(tbl_schema.rootpage, page_size, db)?;
 
-    validate_cols(result_cols, filter, schema)?;
-
-    let rootpage = Page::parse(schema.rootpage, page_size, db)?;
-
-    if let Some(pk) = by_int_pk(filter, schema) {
-        int_pk_search(pk, &rootpage, result_cols, schema, page_size, db)?;
+    if let Some(pk) = by_int_pk(filter, tbl_schema) {
+        int_pk_search(pk, &rootpage, result_cols, tbl_schema, page_size, db)?;
     } else if let Some((idx, key)) = by_idx_key(filter, tbl, db_schema) {
-        idx_search(key, idx, &rootpage, result_cols, schema, page_size, db)?;
+        idx_search(key, idx, &rootpage, result_cols, tbl_schema, page_size, db)?;
     } else {
-        tbl_search(filter, rootpage, result_cols, schema, page_size, db)?;
+        tbl_search(filter, rootpage, result_cols, tbl_schema, page_size, db)?;
     }
 
     Ok(())
@@ -193,24 +198,22 @@ fn print_row(cell: &LeafTblCell, result_cols: &[&str], schema: &ObjSchema) -> St
         .join("|")
 }
 
-fn validate_cols(
-    result_cols: &[&str],
-    filter: &Option<BoolExpr>,
-    schema: &ObjSchema,
-) -> Result<()> {
-    filter
+fn validate_col_names(select_stmt: &Select, tbl_schema: &ObjSchema) -> Result<()> {
+    let selected_cols = select_stmt.selected_cols();
+    let filtered_cols = select_stmt
+        .filter
         .iter()
-        .flat_map(BoolExpr::referenced_cols)
-        .chain(result_cols.iter().copied())
-        .try_for_each(|col| {
-            if schema.cols().has(col) {
-                return Ok(());
-            }
+        .flat_map(BoolExpr::referenced_cols);
 
-            bail!(
-                "Unknown column '{}'. Did you mean '{}'?",
-                col,
-                str_sim::most_similar(col, schema.cols().names()).unwrap()
-            )
-        })
+    selected_cols.chain(filtered_cols).try_for_each(|col| {
+        if tbl_schema.cols().has(col) {
+            return Ok(());
+        }
+
+        bail!(
+            "Unknown column '{}'. Did you mean '{}'?",
+            col,
+            str_sim::most_similar(col, tbl_schema.cols().names()).unwrap()
+        )
+    })
 }
