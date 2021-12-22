@@ -3,17 +3,13 @@ use crate::{
     interpreter::eval::{Eval, Value},
     schema::*,
     syntax::*,
-    util::*,
+    util::{JoinOkExt, *},
 };
 use anyhow::{anyhow, bail, Result};
 use itertools::Itertools;
-use std::convert::TryFrom;
+use std::convert::{TryFrom, TryInto};
 
 pub fn run(stmt: SqlStmt, db_schema: &DbSchema, db: &[u8]) -> Result<()> {
-    fn is_count_expr(cols: &[Expr]) -> bool {
-        cols.len() == 1 && cols[0] == Expr::Count
-    }
-
     match stmt {
         SqlStmt::Select(select_stmt) => {
             let page_size = db_schema.db_header.page_size.into();
@@ -23,40 +19,11 @@ pub fn run(stmt: SqlStmt, db_schema: &DbSchema, db: &[u8]) -> Result<()> {
 
             validate_col_names(&select_stmt, tbl_schema)?;
 
-            if is_count_expr(&select_stmt.cols) {
-                count_rows(tbl_schema, &select_stmt.filter, page_size, db)?;
-            } else {
-                select_cols(tbl_schema, &select_stmt, db_schema, page_size, db)?;
-            }
+            select_cols(tbl_schema, &select_stmt, db_schema, page_size, db)?;
         }
         _ => bail!("Not implemented: {:#?}", stmt),
     }
 
-    Ok(())
-}
-
-fn count_rows(
-    tbl_schema: &ObjSchema,
-    filter: &Option<BoolExpr>,
-    page_size: usize,
-    db: &[u8],
-) -> Result<()> {
-    let count = Page::parse(tbl_schema.rootpage, page_size, db)?
-        .leaf_pages(page_size, db)
-        .flat_map_ok_and_then(|page| {
-            page.cell_ptrs()
-                .map(move |cell_ptr| LeafTblCell::parse(&page.data[cell_ptr..]))
-        })
-        .filter_ok(|cell| match &filter {
-            Some(expr) => match expr.eval(cell, tbl_schema).unwrap() {
-                Value::Int(b) => b == 1,
-                _ => panic!("BoolExpr didn't return a Value::Int"),
-            },
-            None => true,
-        })
-        .fold_ok(0, |count, _| count + 1)?;
-
-    println!("{}", count);
     Ok(())
 }
 
@@ -108,10 +75,15 @@ fn int_pk_search(
     page_size: usize,
     db: &[u8],
 ) -> Result<()> {
-    rootpage
-        .find_cell(pk, page_size, db)?
-        .iter()
-        .for_each(|cell| println!("{}", print_row2(cell, select_stmt, tbl)));
+    if let Some(cell) = rootpage.find_cell(pk, page_size, db)? {
+        let mut row = eval_row(cell, select_stmt, tbl);
+
+        if select_stmt.has_count_expr() {
+            println!("{}", replace_count(row, 1)?.join_ok("|")?);
+        } else {
+            println!("{}", row.join_ok("|")?);
+        }
+    }
 
     Ok(())
 }
@@ -125,15 +97,21 @@ fn idx_search(
     page_size: usize,
     db: &[u8],
 ) -> Result<()> {
-    let rows = Page::parse(idx.rootpage, page_size, db)?
+    let mut rows = Page::parse(idx.rootpage, page_size, db)?
         .find_idx_cells(key.into(), page_size, db)
         .map_ok_and_then(|cell| i64::try_from(&cell.payload[1]))
         .map_ok_and_then(|row_id| rootpage.find_cell(row_id, page_size, db))
         .flatten_ok()
-        .map_ok(|cell| print_row2(&cell, select_stmt, tbl));
+        .map_ok(|cell| eval_row(cell, select_stmt, tbl));
 
-    for row in rows {
-        println!("{}", row?);
+    if select_stmt.has_count_expr() {
+        if let Some(first) = rows.next().transpose()? {
+            println!("{}", replace_count(first, rows.count() + 1)?.join_ok("|")?);
+        }
+    } else {
+        for row in rows {
+            println!("{}", row?.join_ok("|")?);
+        }
     }
 
     Ok(())
@@ -162,19 +140,12 @@ fn tbl_search(
         .map_ok(|cell| eval_row(cell, select_stmt, tbl));
 
     if select_stmt.has_count_expr() {
-        if let Some(first_row) = rows.next().transpose()? {
-            let count = rows.count() + 1;
-            let first_row = first_row
-                .map(|col| match col {
-                    Value::CountPlaceholder => count.to_string(),
-                    _ => format!("{}", col),
-                })
-                .join("|");
-            println!("{}", first_row);
+        if let Some(first) = rows.next().transpose()? {
+            println!("{}", replace_count(first, rows.count() + 1)?.join_ok("|")?);
         }
     } else {
         for row in rows {
-            println!("{}", row?.join("|"));
+            println!("{}", row?.join_ok("|")?);
         }
     }
 
@@ -185,20 +156,24 @@ fn eval_row<'a>(
     cell: LeafTblCell<'a>,
     select_stmt: &'a Select,
     tbl_schema: &'a ObjSchema,
-) -> impl Iterator<Item = Value<'a>> {
+) -> impl Iterator<Item = Result<Value<'a>>> {
     select_stmt
         .cols
         .iter()
-        .map(move |col| col.eval(&cell, tbl_schema).unwrap())
+        .map(move |col| col.eval(&cell, tbl_schema))
 }
 
-fn print_row2(cell: &LeafTblCell, select_stmt: &Select, tbl_schema: &ObjSchema) -> String {
-    select_stmt
-        .cols
-        .iter()
-        .map(|col| format!("{}", col.eval(cell, tbl_schema).unwrap()))
-        .collect::<Vec<_>>()
-        .join("|")
+fn replace_count<'a>(
+    row: impl Iterator<Item = Result<Value<'a>>> + 'a,
+    count: usize,
+) -> Result<impl Iterator<Item = Result<Value<'a>>> + 'a>
+where
+{
+    let count = count.try_into()?;
+    Ok(row.map_ok(move |col| match col {
+        Value::CountPlaceholder => Value::Int(count),
+        _ => col,
+    }))
 }
 
 fn validate_col_names(select_stmt: &Select, tbl_schema: &ObjSchema) -> Result<()> {
