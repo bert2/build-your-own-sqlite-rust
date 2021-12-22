@@ -78,58 +78,102 @@ fn select_cols(
 
     validate_cols(result_cols, filter, schema)?;
 
-    //let indexed_col = filter.as_ref().and_then(BoolExpr::index_searchable_col);
-    //let idx_schema = indexed_col.and_then(|c| db_schema.index(tbl, c));
-
     let rootpage = Page::parse(schema.rootpage, page_size, db)?;
 
-    let int_pk_to_search = filter
+    if let Some(pk) = by_int_pk(filter, schema) {
+        int_pk_search(pk, &rootpage, result_cols, schema, page_size, db)?;
+    } else if let Some((idx, key)) = by_idx_key(filter, tbl, db_schema) {
+        idx_search(key, idx, &rootpage, result_cols, schema, page_size, db)?;
+    } else {
+        tbl_search(filter, rootpage, result_cols, schema, page_size, db)?;
+    }
+
+    Ok(())
+}
+
+fn by_int_pk(filter: &Option<BoolExpr>, schema: &ObjSchema) -> Option<i64> {
+    filter
         .as_ref()
         .and_then(BoolExpr::int_pk_servable)
         .filter(|(col, _)| schema.cols().is_int_pk(col))
-        .map(|(_, pk)| pk);
+        .map(|(_, pk)| pk)
+}
 
-    let idx_to_search = filter
+fn by_idx_key<'a>(
+    filter: &'a Option<BoolExpr>,
+    tbl: &str,
+    db_schema: &'a DbSchema,
+) -> Option<(&'a ObjSchema<'a>, &'a Expr<'a>)> {
+    filter
         .as_ref()
         .and_then(BoolExpr::index_servable)
-        .and_then(|(col, key)| db_schema.index(tbl, col).map(|idx| (idx, key)));
+        .and_then(|(col, key)| db_schema.index(tbl, col).map(|idx| (idx, key)))
+}
 
-    if let Some(pk) = int_pk_to_search {
-        rootpage
-            .find_cell(pk, page_size, db)?
-            .iter()
-            .for_each(|cell| println!("{}", print_row(cell, result_cols, schema)));
-    } else if let Some((idx, key)) = idx_to_search {
-        let rows = Page::parse(idx.rootpage, page_size, db)?
-            .find_idx_cells(Value::try_from(key)?, page_size, db)
-            .map_ok_and_then(|cell| i64::try_from(&cell.payload[1]))
-            .map_ok_and_then(|row_id| rootpage.find_cell(row_id, page_size, db))
-            .map_ok(|cell| cell.into_iter())
-            .flatten_ok()
-            .map_ok(|cell| print_row(&cell, result_cols, schema));
+fn int_pk_search(
+    pk: i64,
+    rootpage: &Page,
+    result_cols: &[&str],
+    tbl: &ObjSchema,
+    page_size: usize,
+    db: &[u8],
+) -> Result<()> {
+    rootpage
+        .find_cell(pk, page_size, db)?
+        .iter()
+        .for_each(|cell| println!("{}", print_row(cell, result_cols, tbl)));
 
-        for row in rows {
-            println!("{}", row?);
-        }
-    } else {
-        let rows = rootpage
-            .leaf_pages(page_size, db)
-            .flat_map_ok_and_then(|page| {
-                page.cell_ptrs()
-                    .map(move |cell_ptr| LeafTblCell::parse(&page.data[cell_ptr..]))
-            })
-            .filter_ok(move |cell| match &filter {
-                Some(expr) => match expr.eval(cell, schema).unwrap() {
-                    Value::Int(b) => b == 1,
-                    _ => panic!("BoolExpr didn't return a Value::Int"),
-                },
-                None => true,
-            })
-            .map_ok(move |cell| print_row(&cell, result_cols, schema));
+    Ok(())
+}
 
-        for row in rows {
-            println!("{}", row?);
-        }
+fn idx_search(
+    key: &Expr,
+    idx: &ObjSchema,
+    rootpage: &Page,
+    result_cols: &[&str],
+    tbl: &ObjSchema,
+    page_size: usize,
+    db: &[u8],
+) -> Result<()> {
+    let rows = Page::parse(idx.rootpage, page_size, db)?
+        .find_idx_cells(Value::try_from(key)?, page_size, db)
+        .map_ok_and_then(|cell| i64::try_from(&cell.payload[1]))
+        .map_ok_and_then(|row_id| rootpage.find_cell(row_id, page_size, db))
+        .flatten_ok()
+        .map_ok(|cell| print_row(&cell, result_cols, tbl));
+
+    for row in rows {
+        println!("{}", row?);
+    }
+
+    Ok(())
+}
+
+fn tbl_search(
+    filter: &Option<BoolExpr>,
+    rootpage: Page,
+    result_cols: &[&str],
+    tbl: &ObjSchema,
+    page_size: usize,
+    db: &[u8],
+) -> Result<()> {
+    let rows = rootpage
+        .leaf_pages(page_size, db)
+        .flat_map_ok_and_then(|page| {
+            page.cell_ptrs()
+                .map(move |cell_ptr| LeafTblCell::parse(&page.data[cell_ptr..]))
+        })
+        .filter_ok(move |cell| match &filter {
+            Some(expr) => match expr.eval(cell, tbl).unwrap() {
+                Value::Int(b) => b == 1,
+                _ => panic!("BoolExpr didn't return a Value::Int"),
+            },
+            None => true,
+        })
+        .map_ok(move |cell| print_row(&cell, result_cols, tbl));
+
+    for row in rows {
+        println!("{}", row?);
     }
 
     Ok(())
