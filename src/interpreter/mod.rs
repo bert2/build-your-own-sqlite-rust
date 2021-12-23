@@ -1,3 +1,4 @@
+pub mod btree;
 pub mod dot_cmd;
 pub mod eval;
 pub mod exec;

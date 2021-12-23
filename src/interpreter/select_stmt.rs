@@ -1,13 +1,16 @@
 use crate::{
     format::{LeafTblCell, Page},
-    interpreter::eval::{Eval, Value},
+    interpreter::{
+        btree,
+        eval::{Eval, Value},
+    },
     schema::{DbSchema, ObjSchema},
     syntax::{BoolExpr, Expr, Literal, Select},
-    util::{str_sim, FlatMapOkAndThenExt, IterEither, JoinOkExt, MapOkAndThenExt},
+    util::{str_sim, IterEither, JoinOkExt},
 };
 use anyhow::{anyhow, bail, Result};
 use itertools::Itertools;
-use std::convert::{TryFrom, TryInto};
+use std::convert::TryInto;
 
 pub fn run(select_stmt: &Select, db_schema: &DbSchema, db: &[u8]) -> Result<()> {
     let page_size = db_schema.db_header.page_size.into();
@@ -23,7 +26,7 @@ pub fn run(select_stmt: &Select, db_schema: &DbSchema, db: &[u8]) -> Result<()> 
     } else if let Some((idx, key)) = by_idx_key(select_stmt, db_schema) {
         idx_search(key, idx, &rootpage, select_stmt, tbl_schema, page_size, db)?;
     } else {
-        tbl_search(rootpage, select_stmt, tbl_schema, page_size, db)?;
+        full_tbl_search(rootpage, select_stmt, tbl_schema, page_size, db)?;
     }
 
     Ok(())
@@ -57,8 +60,7 @@ fn int_pk_search(
     page_size: usize,
     db: &[u8],
 ) -> Result<()> {
-    let row = rootpage
-        .find_tbl_cell(pk, page_size, db)?
+    let row = btree::pk_scan(pk, rootpage, page_size, db)?
         .map(|cell| eval_row(cell, select_stmt, tbl))
         .ok_or(select_stmt);
 
@@ -80,12 +82,14 @@ fn idx_search(
     page_size: usize,
     db: &[u8],
 ) -> Result<()> {
-    let mut rows = Page::parse(idx.rootpage, page_size, db)?
-        .find_idx_cells(key.into(), page_size, db)
-        .map_ok_and_then(|cell| i64::try_from(&cell.payload[1]))
-        .map_ok_and_then(|row_id| rootpage.find_tbl_cell(row_id, page_size, db))
-        .flatten_ok()
-        .map_ok(|cell| eval_row(cell, select_stmt, tbl));
+    let mut rows = btree::idx_scan(
+        key.into(),
+        Page::parse(idx.rootpage, page_size, db)?,
+        rootpage,
+        page_size,
+        db,
+    )
+    .map_ok(|cell| eval_row(cell, select_stmt, tbl));
 
     if select_stmt.has_count_expr() {
         let first = rows.next().transpose()?.ok_or(select_stmt);
@@ -99,19 +103,14 @@ fn idx_search(
     Ok(())
 }
 
-fn tbl_search(
+fn full_tbl_search(
     rootpage: Page,
     select_stmt: &Select,
     tbl: &ObjSchema,
     page_size: usize,
     db: &[u8],
 ) -> Result<()> {
-    let mut rows = rootpage
-        .leaf_pages(page_size, db)
-        .flat_map_ok_and_then(|page| {
-            page.cell_ptrs()
-                .map(move |cell_ptr| LeafTblCell::parse(&page.data[cell_ptr..]))
-        })
+    let mut rows = btree::full_tbl_scan(rootpage, page_size, db)
         .filter_ok(move |cell| match &select_stmt.filter {
             Some(expr) => match expr.eval(cell, tbl).unwrap() {
                 Value::Int(b) => b == 1,
