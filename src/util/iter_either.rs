@@ -3,6 +3,8 @@ use std::{
     option::IntoIter,
 };
 
+type Chained<L, R> = Chain<Flatten<IntoIter<L>>, Flatten<IntoIter<R>>>;
+
 pub struct IterEither<L, R, T>
 where
     L: Iterator<Item = T>,
@@ -10,7 +12,7 @@ where
 {
     pub left: Option<L>,
     pub right: Option<R>,
-    inner: Option<Chain<Flatten<IntoIter<L>>, Flatten<IntoIter<R>>>>,
+    inner: Option<Chained<L, R>>,
 }
 
 impl<L, R, T> IterEither<L, R, T>

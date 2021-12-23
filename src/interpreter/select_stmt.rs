@@ -16,7 +16,7 @@ pub fn run(select_stmt: &Select, db_schema: &DbSchema, db: &[u8]) -> Result<()> 
         .ok_or_else(|| anyhow!("Table '{}' not found", select_stmt.tbl))?;
     let rootpage = Page::parse(tbl_schema.rootpage, page_size, db)?;
 
-    validate_col_names(&select_stmt, tbl_schema)?;
+    validate_col_names(select_stmt, tbl_schema)?;
 
     if let Some(pk) = by_int_pk(select_stmt, tbl_schema) {
         int_pk_search(pk, &rootpage, select_stmt, tbl_schema, page_size, db)?;

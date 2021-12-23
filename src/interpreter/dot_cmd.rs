@@ -2,14 +2,15 @@ use crate::{schema::DbSchema, syntax::DotCmd};
 use anyhow::Result;
 
 pub fn run(cmd: DotCmd, db_schema: &DbSchema) -> Result<()> {
-    Ok(match cmd {
+    match cmd {
         DotCmd::DbInfo => dbinfo(db_schema),
         DotCmd::Tables => tables(db_schema),
         DotCmd::Schema => schema(db_schema),
-    })
+    };
+    Ok(())
 }
 
-fn dbinfo(db_schema: &DbSchema) -> () {
+fn dbinfo(db_schema: &DbSchema) {
     let s = db_schema;
     let h = &s.db_header;
 
@@ -36,14 +37,14 @@ fn dbinfo(db_schema: &DbSchema) -> () {
     println!("schema size:         {}", s.size);
 }
 
-fn tables(db_schema: &DbSchema) -> () {
+fn tables(db_schema: &DbSchema) {
     db_schema
         .tables()
         .filter(|t| !t.is_sequence_tbl())
         .for_each(|t| print!("{} ", t.name));
 }
 
-fn schema(db_schema: &DbSchema) -> () {
+fn schema(db_schema: &DbSchema) {
     db_schema.objs.iter().for_each(|schema| match schema.sql {
         Some(sql) => println!("{};", sql),
         None => println!(
