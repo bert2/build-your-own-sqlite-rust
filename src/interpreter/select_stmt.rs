@@ -1,40 +1,22 @@
 use crate::{
     format::{LeafTblCell, Page},
     interpreter::eval::{Eval, Value},
-    schema::*,
-    syntax::*,
-    util::{JoinOkExt, *},
+    schema::{DbSchema, ObjSchema},
+    syntax::{BoolExpr, Expr, Literal, Select},
+    util::{str_sim, FlatMapOkAndThenExt, IterEither, JoinOkExt, MapOkAndThenExt},
 };
 use anyhow::{anyhow, bail, Result};
 use itertools::Itertools;
 use std::convert::{TryFrom, TryInto};
 
-pub fn run(stmt: SqlStmt, db_schema: &DbSchema, db: &[u8]) -> Result<()> {
-    match stmt {
-        SqlStmt::Select(select_stmt) => {
-            let page_size = db_schema.db_header.page_size.into();
-            let tbl_schema = db_schema
-                .table(select_stmt.tbl)
-                .ok_or_else(|| anyhow!("Table '{}' not found", select_stmt.tbl))?;
-
-            validate_col_names(&select_stmt, tbl_schema)?;
-
-            select_cols(tbl_schema, &select_stmt, db_schema, page_size, db)?;
-        }
-        _ => bail!("Not implemented: {:#?}", stmt),
-    }
-
-    Ok(())
-}
-
-fn select_cols(
-    tbl_schema: &ObjSchema,
-    select_stmt: &Select,
-    db_schema: &DbSchema,
-    page_size: usize,
-    db: &[u8],
-) -> Result<()> {
+pub fn run(select_stmt: &Select, db_schema: &DbSchema, db: &[u8]) -> Result<()> {
+    let page_size = db_schema.db_header.page_size.into();
+    let tbl_schema = db_schema
+        .table(select_stmt.tbl)
+        .ok_or_else(|| anyhow!("Table '{}' not found", select_stmt.tbl))?;
     let rootpage = Page::parse(tbl_schema.rootpage, page_size, db)?;
+
+    validate_col_names(&select_stmt, tbl_schema)?;
 
     if let Some(pk) = by_int_pk(select_stmt, tbl_schema) {
         int_pk_search(pk, &rootpage, select_stmt, tbl_schema, page_size, db)?;
@@ -180,7 +162,8 @@ where
         Err(select_stmt) => {
             let empty_row = select_stmt.cols.iter().map(|col| match col {
                 Expr::Count => Ok(Value::Int(0)),
-                _ => Ok(Value::String("")),
+                Expr::Literal(lit) => Ok(lit.into()),
+                Expr::ColName(_) => Ok(Value::String("")),
             });
             Ok(IterEither::right(empty_row))
         }

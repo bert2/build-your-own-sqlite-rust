@@ -1,6 +1,6 @@
 use crate::syntax::ast::*;
 use anyhow::{anyhow, Result};
-use nom::{error::*, Finish};
+use nom::{error::convert_error, Finish};
 
 pub fn sqlite(sql: &str) -> Result<Sqlite> {
     parsers::sqlite(sql)

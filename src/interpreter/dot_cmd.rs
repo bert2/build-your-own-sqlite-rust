@@ -1,4 +1,4 @@
-use crate::{schema::*, syntax::DotCmd};
+use crate::{schema::DbSchema, syntax::DotCmd};
 use anyhow::Result;
 
 pub fn run(cmd: DotCmd, db_schema: &DbSchema) -> Result<()> {

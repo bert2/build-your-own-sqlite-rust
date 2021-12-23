@@ -1,4 +1,4 @@
-use crate::format::{col_content::*, varint};
+use crate::format::{varint, ColContent};
 use anyhow::Result;
 use std::{convert::TryInto, ops::Index};
 

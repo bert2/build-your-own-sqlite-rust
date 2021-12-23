@@ -1,4 +1,7 @@
-use crate::{syntax::*, util::*};
+use crate::{
+    syntax::{parse, ColDef, SqlStmt},
+    util::{flip, IterEither},
+};
 use anyhow::*;
 use std::{collections::HashMap, iter::once};
 
@@ -12,7 +15,7 @@ pub enum Cols<'a> {
 }
 
 impl<'a> Cols<'a> {
-    pub fn parse(create_sql: &'a str) -> Result<Cols<'a>> {
+    pub fn parse(create_sql: &'a str) -> Result<Self> {
         let sql = parse::sql_stmt(create_sql)
             .map_err(|e| anyhow!("Failed to parse CREATE statement: {}", e))?;
 

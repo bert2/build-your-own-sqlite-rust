@@ -1,6 +1,6 @@
-use crate::{format::*, schema::Cols};
-use anyhow::*;
-use std::convert::*;
+use crate::{format::LeafTblCell, schema::Cols};
+use anyhow::{anyhow, Result};
+use std::convert::TryFrom;
 
 #[derive(Debug)]
 pub struct ObjSchema<'a> {

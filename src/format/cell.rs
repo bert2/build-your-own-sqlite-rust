@@ -1,4 +1,4 @@
-use crate::format::{record::Record, varint};
+use crate::format::{varint, Record};
 use anyhow::Result;
 use std::convert::TryInto;
 

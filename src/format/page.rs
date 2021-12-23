@@ -1,7 +1,7 @@
 use crate::{
-    format::{cell::*, db_header::*, page_header::*},
-    interpreter::eval::*,
-    util::*,
+    format::{DbHeader, IntrIdxCell, IntrTblCell, LeafIdxCell, LeafTblCell, PageHeader, PageType},
+    interpreter::eval::Value,
+    util::{FlatMapOkAndThenExt, IterEither, MapOkAndThenExt},
 };
 use anyhow::*;
 use std::{
@@ -171,7 +171,5 @@ impl<'a> Page<'a> {
             });
 
         IterEither::right(cells)
-
-        //.collect::<Vec<_>>().into_iter().map(|x|x)
     }
 }
