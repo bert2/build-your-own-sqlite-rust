@@ -71,7 +71,7 @@ impl<'a> ColDef<'a> {
 }
 
 impl<'a> Expr<'a> {
-    pub fn as_col_name(&self) -> Option<&str> {
+    pub const fn as_col_name(&self) -> Option<&str> {
         match self {
             Expr::ColName(c) => Some(c),
             _ => None,
@@ -99,7 +99,7 @@ impl<'a> BoolExpr<'a> {
         }
     }
 
-    pub fn is_int_pk_servable(&self) -> Option<(&str, i64)> {
+    pub const fn is_int_pk_servable(&self) -> Option<(&str, i64)> {
         match self {
             BoolExpr::Equals {
                 l: Expr::ColName(c),
@@ -113,7 +113,7 @@ impl<'a> BoolExpr<'a> {
         }
     }
 
-    pub fn is_index_servable(&self) -> Option<(&str, &Literal)> {
+    pub const fn is_index_servable(&self) -> Option<(&str, &Literal)> {
         match self {
             BoolExpr::Equals {
                 l: Expr::ColName(c),

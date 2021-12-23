@@ -53,7 +53,7 @@ impl PageHeader {
         matches!(self.page_type, PageType::LeafTbl | PageType::LeafIdx)
     }
 
-    pub fn size(&self) -> usize {
+    pub const fn size(&self) -> usize {
         if self.is_leaf() {
             8
         } else {

@@ -20,7 +20,7 @@ where
     L: Iterator<Item = T>,
     R: Iterator<Item = T>,
 {
-    pub fn left(iter: L) -> IterEither<L, R, T> {
+    pub fn left(iter: L) -> Self {
         Self {
             left: Some(iter),
             right: None,
@@ -28,7 +28,7 @@ where
         }
     }
 
-    pub fn right(iter: R) -> IterEither<L, R, T> {
+    pub fn right(iter: R) -> Self {
         Self {
             left: None,
             right: Some(iter),
