@@ -36,7 +36,7 @@ pub fn full_tbl_scan<'a>(
 
         let leaves = page
             .cell_ptrs()
-            .map(move |cell_ptr| IntrTblCell::parse(&page.data[cell_ptr..]))
+            .map(move |ptr| IntrTblCell::parse(&page.data[ptr..]))
             .map_ok_and_then(move |cell| Page::parse(cell.child_page, page_size, db))
             .chain(once(Page::parse(right_most_child_page, page_size, db)))
             .flat_map_ok_and_then(move |p| {
@@ -48,7 +48,7 @@ pub fn full_tbl_scan<'a>(
 
     leaf_pages(page, page_size, db).flat_map_ok_and_then(|p| {
         p.cell_ptrs()
-            .map(move |cell_ptr| LeafTblCell::parse(&p.data[cell_ptr..]))
+            .map(move |ptr| LeafTblCell::parse(&p.data[ptr..]))
     })
 }
 
@@ -61,7 +61,7 @@ pub fn pk_scan<'a>(
     if page.header.page_type == PageType::LeafTbl {
         for cell in page
             .cell_ptrs()
-            .map(move |cell_ptr| LeafTblCell::parse(&page.data[cell_ptr..]))
+            .map(move |ptr| LeafTblCell::parse(&page.data[ptr..]))
         {
             let cell = cell?;
             if cell.row_id == pk {
@@ -80,7 +80,7 @@ pub fn pk_scan<'a>(
 
     let intr_cells = page
         .cell_ptrs()
-        .map(|cell_ptr| IntrTblCell::parse(&page.data[cell_ptr..]));
+        .map(|ptr| IntrTblCell::parse(&page.data[ptr..]));
 
     for cell in intr_cells {
         let cell = cell?;
@@ -94,19 +94,19 @@ pub fn pk_scan<'a>(
         }
     }
 
-    let right_most_child_page = page.header.right_most_ptr.unwrap_or_else(|| {
-        panic!(
-            "Expected {:?} to have right most child page pointer",
-            page.header.page_type
-        )
-    });
+    let right_most_child_page = page
+        .header
+        .right_most_ptr
+        .map(|ptr| Page::parse(ptr, page_size, db))
+        .transpose()?
+        .unwrap_or_else(|| {
+            panic!(
+                "Expected {:?} to have right most child page pointer",
+                page.header.page_type
+            )
+        });
 
-    pk_scan(
-        pk,
-        &Page::parse(right_most_child_page, page_size, db)?,
-        page_size,
-        db,
-    )
+    pk_scan(pk, &right_most_child_page, page_size, db)
 }
 
 pub fn idx_scan<'a>(
@@ -125,7 +125,7 @@ pub fn idx_scan<'a>(
         if idx_page.header.page_type == PageType::LeafIdx {
             let cells = idx_page
                 .cell_ptrs()
-                .map(move |cell_ptr| LeafIdxCell::parse(&idx_page.data[cell_ptr..]).unwrap())
+                .map(move |ptr| LeafIdxCell::parse(&idx_page.data[ptr..]).unwrap())
                 .skip_while(move |cell| Value::try_from(&cell.payload[0]).unwrap() < key)
                 .take_while(move |cell| Value::try_from(&cell.payload[0]).unwrap() == key)
                 .map(Ok);
@@ -147,7 +147,7 @@ pub fn idx_scan<'a>(
 
         let cells = idx_page
             .cell_ptrs()
-            .map(|cell_ptr| IntrIdxCell::parse(&idx_page.data[cell_ptr..]).unwrap())
+            .map(|ptr| IntrIdxCell::parse(&idx_page.data[ptr..]).unwrap())
             .find(|cell| key <= Value::try_from(&cell.payload[0]).unwrap())
             .into_iter()
             .map(move |cell| Page::parse(cell.child_page, page_size, db))

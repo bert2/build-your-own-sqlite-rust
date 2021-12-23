@@ -22,11 +22,19 @@ pub fn run(select_stmt: &Select, db_schema: &DbSchema, db: &[u8]) -> Result<()> 
     validate_col_names(select_stmt, tbl_schema)?;
 
     if let Some(pk) = by_int_pk(select_stmt, tbl_schema) {
-        int_pk_search(pk, &rootpage, select_stmt, tbl_schema, page_size, db)?;
-    } else if let Some((idx, key)) = by_idx_key(select_stmt, db_schema) {
-        idx_search(key, idx, &rootpage, select_stmt, tbl_schema, page_size, db)?;
+        int_pk_search(pk, select_stmt, &rootpage, tbl_schema, page_size, db)?;
+    } else if let Some((idx_schema, key)) = by_idx_key(select_stmt, db_schema) {
+        idx_search(
+            key,
+            idx_schema,
+            select_stmt,
+            &rootpage,
+            tbl_schema,
+            page_size,
+            db,
+        )?;
     } else {
-        full_tbl_search(rootpage, select_stmt, tbl_schema, page_size, db)?;
+        full_tbl_search(select_stmt, rootpage, tbl_schema, page_size, db)?;
     }
 
     Ok(())
@@ -54,14 +62,14 @@ fn by_idx_key<'a>(
 
 fn int_pk_search(
     pk: i64,
-    rootpage: &Page,
     select_stmt: &Select,
-    tbl: &ObjSchema,
+    tbl_page: &Page,
+    tbl_schema: &ObjSchema,
     page_size: usize,
     db: &[u8],
 ) -> Result<()> {
-    let row = btree::pk_scan(pk, rootpage, page_size, db)?
-        .map(|cell| eval_row(cell, select_stmt, tbl))
+    let row = btree::pk_scan(pk, tbl_page, page_size, db)?
+        .map(|cell| eval_row(cell, select_stmt, tbl_schema))
         .ok_or(select_stmt);
 
     if select_stmt.has_count_expr() {
@@ -75,21 +83,16 @@ fn int_pk_search(
 
 fn idx_search(
     key: &Literal,
-    idx: &ObjSchema,
-    rootpage: &Page,
+    idx_schema: &ObjSchema,
     select_stmt: &Select,
-    tbl: &ObjSchema,
+    tbl_page: &Page,
+    tbl_schema: &ObjSchema,
     page_size: usize,
     db: &[u8],
 ) -> Result<()> {
-    let mut rows = btree::idx_scan(
-        key.into(),
-        Page::parse(idx.rootpage, page_size, db)?,
-        rootpage,
-        page_size,
-        db,
-    )
-    .map_ok(|cell| eval_row(cell, select_stmt, tbl));
+    let idx_page = Page::parse(idx_schema.rootpage, page_size, db)?;
+    let mut rows = btree::idx_scan(key.into(), idx_page, tbl_page, page_size, db)
+        .map_ok(|cell| eval_row(cell, select_stmt, tbl_schema));
 
     if select_stmt.has_count_expr() {
         let first = rows.next().transpose()?.ok_or(select_stmt);
@@ -104,21 +107,21 @@ fn idx_search(
 }
 
 fn full_tbl_search(
-    rootpage: Page,
     select_stmt: &Select,
-    tbl: &ObjSchema,
+    tbl_page: Page,
+    tbl_schema: &ObjSchema,
     page_size: usize,
     db: &[u8],
 ) -> Result<()> {
-    let mut rows = btree::full_tbl_scan(rootpage, page_size, db)
+    let mut rows = btree::full_tbl_scan(tbl_page, page_size, db)
         .filter_ok(move |cell| match &select_stmt.filter {
-            Some(expr) => match expr.eval(cell, tbl).unwrap() {
+            Some(expr) => match expr.eval(cell, tbl_schema).unwrap() {
                 Value::Int(b) => b == 1,
                 _ => panic!("BoolExpr didn't return a Value::Int"),
             },
             None => true,
         })
-        .map_ok(|cell| eval_row(cell, select_stmt, tbl));
+        .map_ok(|cell| eval_row(cell, select_stmt, tbl_schema));
 
     if select_stmt.has_count_expr() {
         let first = rows.next().transpose()?.ok_or(select_stmt);
