@@ -3,7 +3,7 @@ use crate::{
     interpreter::eval::Value,
     util::{FlatMapOkAndThenExt, IterEither, MapOkAndThenExt},
 };
-use anyhow::*;
+use anyhow::Result;
 use std::{
     convert::{TryFrom, TryInto},
     iter::once,

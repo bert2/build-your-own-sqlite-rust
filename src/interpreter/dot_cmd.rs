@@ -1,7 +1,7 @@
 use crate::{schema::DbSchema, syntax::DotCmd};
 use anyhow::Result;
 
-pub fn run(cmd: DotCmd, db_schema: &DbSchema) -> Result<()> {
+pub fn run(cmd: &DotCmd, db_schema: &DbSchema) -> Result<()> {
     match cmd {
         DotCmd::DbInfo => dbinfo(db_schema),
         DotCmd::Tables => tables(db_schema),

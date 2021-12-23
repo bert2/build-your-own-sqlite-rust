@@ -19,8 +19,8 @@ pub fn sql_stmt(sql: &str) -> Result<SqlStmt> {
 mod parsers {
     use crate::syntax::{ast::*, util::*};
     use nom::{
-        branch::*, bytes::complete::*, character::complete::*, combinator::*, error::*,
-        multi::many0, sequence::*, IResult, Parser,
+        branch::*, bytes::complete::*, character::complete::*, combinator::*, error::*, multi::*,
+        sequence::*, IResult, Parser,
     };
 
     type R<'a, O> = IResult<&'a str, O, VerboseError<&'a str>>;

@@ -2,7 +2,7 @@ use crate::{
     syntax::{parse, ColDef, SqlStmt},
     util::{flip, IterEither},
 };
-use anyhow::*;
+use anyhow::{anyhow, bail, Result};
 use std::{collections::HashMap, iter::once};
 
 #[derive(Debug)]
