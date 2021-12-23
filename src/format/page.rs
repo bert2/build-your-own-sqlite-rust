@@ -80,7 +80,7 @@ impl<'a> Page<'a> {
         IterEither::right(leaves)
     }
 
-    pub fn find_cell(
+    pub fn find_tbl_cell(
         &self,
         row_id: i64,
         page_size: usize,
@@ -114,7 +114,7 @@ impl<'a> Page<'a> {
             let cell = cell?;
             if row_id <= cell.row_id {
                 return Page::parse(cell.child_page, page_size, db)?
-                    .find_cell(row_id, page_size, db);
+                    .find_tbl_cell(row_id, page_size, db);
             }
         }
 
@@ -125,7 +125,7 @@ impl<'a> Page<'a> {
             )
         });
 
-        Page::parse(right_most_child_page, page_size, db)?.find_cell(row_id, page_size, db)
+        Page::parse(right_most_child_page, page_size, db)?.find_tbl_cell(row_id, page_size, db)
     }
 
     pub fn find_idx_cells(

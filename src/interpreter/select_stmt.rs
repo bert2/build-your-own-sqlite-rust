@@ -58,7 +58,7 @@ fn int_pk_search(
     db: &[u8],
 ) -> Result<()> {
     let row = rootpage
-        .find_cell(pk, page_size, db)?
+        .find_tbl_cell(pk, page_size, db)?
         .map(|cell| eval_row(cell, select_stmt, tbl))
         .ok_or(select_stmt);
 
@@ -83,7 +83,7 @@ fn idx_search(
     let mut rows = Page::parse(idx.rootpage, page_size, db)?
         .find_idx_cells(key.into(), page_size, db)
         .map_ok_and_then(|cell| i64::try_from(&cell.payload[1]))
-        .map_ok_and_then(|row_id| rootpage.find_cell(row_id, page_size, db))
+        .map_ok_and_then(|row_id| rootpage.find_tbl_cell(row_id, page_size, db))
         .flatten_ok()
         .map_ok(|cell| eval_row(cell, select_stmt, tbl));
 
