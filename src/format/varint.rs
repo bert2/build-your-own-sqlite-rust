@@ -12,7 +12,7 @@ pub fn parse(stream: &[u8]) -> (i64, usize) {
         .enumerate()
         .map(|(i, &b)| if i == 8 { (8, b) } else { (7, b & 0b0111_1111) })
         .fold((0, 0), |(varint, bytes_read), (used_bits, byte)| {
-            let varint = (varint << used_bits) | i64::from(byte);
+            let varint = varint << used_bits | i64::from(byte);
             (varint, bytes_read + 1)
         })
 }

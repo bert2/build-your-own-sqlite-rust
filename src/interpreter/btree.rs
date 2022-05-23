@@ -147,9 +147,8 @@ pub fn idx_scan<'a>(
 
         let cells = idx_page
             .cell_ptrs()
-            .map(|ptr| IntrIdxCell::parse(&idx_page.data[ptr..]).unwrap())
-            .find(|cell| key <= Value::try_from(&cell.payload[0]).unwrap())
-            .into_iter()
+            .map(move |ptr| IntrIdxCell::parse(&idx_page.data[ptr..]).unwrap())
+            .filter(move |cell| key <= Value::try_from(&cell.payload[0]).unwrap())
             .map(move |cell| Page::parse(cell.child_page, page_size, db))
             .chain(once(Page::parse(right_most_child_page, page_size, db)))
             .flat_map_ok_and_then(move |page| {
